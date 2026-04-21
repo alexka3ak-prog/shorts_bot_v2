@@ -233,8 +233,8 @@ class VideoConcatenator:
                 "prompt": scene.get("prompt", ""),
                 "duration": scene.get("duration", 0),
                 "transition": scene.get("transition", "none"),
-                "image_path": image_paths[i] if i < len(image_paths) else None,
-                "video_path": self.temp_dir / f"scene_{scene.get('scene_id', i+1):03d}_video.mp4"
+                "image_path": str(image_paths[i]) if i < len(image_paths) else None,
+                "video_path": str(self.temp_dir / f"scene_{scene.get('scene_id', i+1):03d}_video.mp4")
             }
             metadata["scenes"].append(scene_meta)
         
