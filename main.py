@@ -149,25 +149,19 @@ class AutoVideoPipeline:
         logger.info("\n[3/5] Generating videos...")
         
         if self.simple_generator:
-            # Use simple FFmpeg-based generator with random effects
+            # Use simple FFmpeg-based generator
             logger.info("Using simple video generator (FFmpeg)")
             video_paths = []
             for i, (scene, img_path) in enumerate(zip(script, image_paths)):
-                prompt = scene.get("prompt", "") if isinstance(scene, dict) else ""
                 scene_id = scene.get("scene_id", i+1) if isinstance(scene, dict) else i+1
                 duration = scene.get("duration", 4.0)
                 
-                # Random effect for variety
-                import random
-                effect = random.choice(["zoom", "zoom_in", "pan_left", "pan_right", 
-                                      "tilt_up", "tilt_down", "circle", "wave", "float"])
-                
                 output_path = self.temp_dir / f"scene_{scene_id}.mp4"
                 vid_path = self.simple_generator.generate_video(
-                    img_path, str(output_path), duration, effect=effect
+                    img_path, str(output_path), duration
                 )
                 video_paths.append(vid_path)
-                logger.info(f"  Scene {scene_id}: {os.path.basename(vid_path)} ({effect})")
+                logger.info(f"  Scene {scene_id}: {os.path.basename(vid_path)}")
         else:
             # Use default VideoGenerator
             video_paths = self.video_generator.generate_all_videos(script, image_paths)
