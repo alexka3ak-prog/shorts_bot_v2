@@ -99,7 +99,11 @@ def generate_video():
 @app.route('/api/status')
 def get_status():
     """Получить статус генерации"""
-    return jsonify(generation_state)
+    # Convert Path to string for JSON serialization
+    state = dict(generation_state)
+    if state.get("result_video"):
+        state["result_video"] = str(state["result_video"])
+    return jsonify(state)
 
 
 @app.route('/api/download')
