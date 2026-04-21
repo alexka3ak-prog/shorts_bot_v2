@@ -81,13 +81,13 @@ class SimpleVideoGenerator:
             # Плавный зум эффект
             filter_complex = (
                 f"zoompan=z='min(zoom+0.001,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-                f"d={total_frames}:s={fps}p,format=yuv420p"
+                f"d={total_frames}:fps={fps},format=yuv420p"
             )
         elif effect == "pan":
             # Плавное движение
             filter_complex = (
                 f"zoompan=x=lerp(0,iw/4,n/{total_frames}):y=lerp(0,ih/4,n/{total_frames}):"
-                f"d={total_frames}:s={fps}p,format=yuv420p"
+                f"d={total_frames}:fps={fps},format=yuv420p"
             )
         elif effect == "fade":
             # Fade эффект
