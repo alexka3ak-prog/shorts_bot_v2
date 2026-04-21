@@ -91,9 +91,28 @@ def _generate_via_ollama(idea: str, num_scenes: int) -> List[Dict[str, Any]]:
     
     # Parse JSON from response
     try:
+        # Ensure content is a string
+        if not isinstance(content, str):
+            logger.warning(f"Ollama response is not a string: {type(content)}")
+            content = str(content)
+        
+        # Try to extract JSON from content if wrapped in text
+        content = content.strip()
+        
+        # Sometimes model adds extra text, try to find JSON array
+        if not content.startswith("["):
+            # Look for JSON array
+            start = content.find("[")
+            end = content.rfind("]") + 1
+            if start >= 0 and end > start:
+                content = content[start:end]
+        
         script = json.loads(content)
         if isinstance(script, dict) and "scenes" in script:
             script = script["scenes"]
+        elif not isinstance(script, list):
+            raise ValueError(f"Expected list or dict with scenes, got {type(script)}")
+            
         logger.info(f"Generated {len(script)} scenes via Ollama")
         return script
     except json.JSONDecodeError as e:
