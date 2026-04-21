@@ -97,25 +97,55 @@ class AutoVideoPipeline:
         # Validate script
         validate_script(script)
         logger.info(f"  ✓ Generated {len(script)} scenes")
-        logger.info(f"  Preview: {json.dumps(script[:2], indent=2)[:200]}...")
+        
+        # Safe preview - show first 2 scenes
+        preview_scenes = []
+        for i, s in enumerate(script[:2]):
+            if isinstance(s, dict):
+                preview_scenes.append({
+                    "scene_id": s.get("scene_id", i+1),
+                    "description": s.get("description", "")[:50]
+                })
+        logger.info(f"  Preview: {json.dumps(preview_scenes)}...")
         
         # Step 2: Generate images for each scene
         logger.info("\n[2/5] Generating images with Stable Diffusion XL...")
         image_paths = self.image_generator.generate_all_images(script)
         
         for i, (scene, img_path) in enumerate(zip(script, image_paths)):
-            logger.info(f"  Scene {scene['scene_id']}: {os.path.basename(img_path)}")
+            # Safely get scene_id
+            if isinstance(scene, dict):
+                scene_id = scene.get("scene_id", i+1)
+                if scene_id == 0:
+                    scene_id = i + 1
+            else:
+                scene_id = i + 1
+            logger.info(f"  Scene {scene_id}: {os.path.basename(img_path)}")
         
         # Step 3: Generate videos from images
         logger.info("\n[3/5] Generating videos with LTX 2.3...")
         video_paths = self.video_generator.generate_all_videos(script, image_paths)
         
         for i, (scene, vid_path) in enumerate(zip(script, video_paths)):
-            logger.info(f"  Scene {scene['scene_id']}: {os.path.basename(vid_path)}")
+            # Safely get scene_id
+            if isinstance(scene, dict):
+                scene_id = scene.get("scene_id", i+1)
+                if scene_id == 0:
+                    scene_id = i + 1
+            else:
+                scene_id = i + 1
+            logger.info(f"  Scene {scene_id}: {os.path.basename(vid_path)}")
         
         # Step 4: Concatenate videos
         logger.info("\n[4/5] Concatenating scene videos...")
-        transitions = [s.get("transition", "fade") for s in script[:-1]]
+        
+        # Safely extract transitions
+        transitions = []
+        for i, s in enumerate(script[:-1]):
+            if isinstance(s, dict):
+                transitions.append(s.get("transition", "fade"))
+            else:
+                transitions.append("fade")
         
         final_video = self.concatenator.concatenate_videos(
             video_paths,
