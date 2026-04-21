@@ -29,7 +29,8 @@ from pipeline import (
     validate_script,
     ImageGenerator,
     VideoGenerator,
-    VideoConcatenator
+    VideoConcatenator,
+    ComfyUIVideoGenerator
 )
 from config import (
     OUTPUT_DIR,
@@ -37,7 +38,9 @@ from config import (
     FINAL_VIDEO_NAME,
     SCENE_DURATION,
     INSTAGRAM_FORMATS,
-    DEFAULT_FORMAT
+    DEFAULT_FORMAT,
+    DEFAULT_VIDEO_MODEL,
+    COMFYUI_CHECKPOINT_PATH
 )
 
 # Configure logging
@@ -52,10 +55,11 @@ class AutoVideoPipeline:
     """Main video generation pipeline"""
     
     def __init__(self, output_dir: str = OUTPUT_DIR, temp_dir: str = TEMP_DIR, 
-                 format_name: str = DEFAULT_FORMAT):
+                 format_name: str = DEFAULT_FORMAT, video_model: str = DEFAULT_VIDEO_MODEL):
         self.output_dir = Path(output_dir)
         self.temp_dir = Path(temp_dir)
         self.format_name = format_name
+        self.video_model = video_model
         
         # Ensure directories exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -64,11 +68,21 @@ class AutoVideoPipeline:
         # Get format info
         format_info = INSTAGRAM_FORMATS.get(format_name, INSTAGRAM_FORMATS[DEFAULT_FORMAT])
         logger.info(f"Using format: {format_name} ({format_info['aspect_ratio']})")
+        logger.info(f"Using video model: {video_model}")
         
         # Initialize components
         self.script_gen = None  # Uses module-level function
         self.image_generator = ImageGenerator(str(self.temp_dir), format_name)
         self.video_generator = VideoGenerator(str(self.temp_dir))
+        
+        # ComfyUI video generator (для LTX/Wan)
+        self.comfyui_generator = None
+        if video_model in ["ltx", "wan"]:
+            try:
+                self.comfyui_generator = ComfyUIVideoGenerator()
+            except Exception as e:
+                logger.warning(f"ComfyUI not available: {e}")
+        
         self.concatenator = VideoConcatenator(str(self.output_dir), str(self.temp_dir))
         
         logger.info(f"Pipeline initialized. Output: {self.output_dir}")

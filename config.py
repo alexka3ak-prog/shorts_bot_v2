@@ -27,7 +27,7 @@ STABILITY_API_KEY = os.getenv("STABILITY_API_KEY", "")
 STABILITY_API_URL = "https://api.stability.ai/v2beta/image-generation/text-to-image"
 
 # ============================================
-# LTX Video Generation (локально или API)
+# LTX/Wan Video Generation (локально через ComfyUI)
 # ============================================
 # Вариант 1: Локальный генератор (базовый)
 USE_LOCAL_LTX = os.getenv("USE_LOCAL_LTX", "true").lower() == "true"
@@ -35,6 +35,18 @@ USE_LOCAL_LTX = os.getenv("USE_LOCAL_LTX", "true").lower() == "true"
 # Вариант 2: LTX API
 LTX_API_KEY = os.getenv("LTX_API_KEY", "")
 LTX_API_URL = os.getenv("LTX_API_URL", "https://api.ltx.latent.space/v1/video/generate")
+
+# Вариант 3: ComfyUI (LTX/Wan) - РЕКОМЕНДУЕТСЯ
+USE_COMFYUI = os.getenv("USE_COMFYUI", "true").lower() == "true"
+COMFYUI_HOST = os.getenv("COMFYUI_HOST", "127.0.0.1")
+COMFYUI_PORT = int(os.getenv("COMFYUI_PORT", "8188"))
+COMFYUI_CHECKPOINT_PATH = os.getenv(
+    "COMFYUI_CHECKPOINT_PATH", 
+    r"D:\Models\ComfyUI_Models\models\checkpoints"
+)
+
+# Default модель для видео: "ltx" или "wan"
+DEFAULT_VIDEO_MODEL = os.getenv("DEFAULT_VIDEO_MODEL", "ltx")
 
 # Video Settings
 IMAGE_WIDTH = 1024
