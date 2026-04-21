@@ -1,47 +1,43 @@
 @echo off
-chcp 65001 >nul
-title AutoVideo Generator
+REM AutoVideo Generator - Windows Setup
 
 echo ========================================
 echo   AutoVideo Generator - Windows Setup
 echo ========================================
 echo.
 
-REM Проверка Python
+REM Check Python
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ОШИБКА] Python не найден!
-    echo Скачайте с https://www.python.org/downloads/
-    echo Не забудьте добавить Python в PATH
+    echo [ERROR] Python not found!
+    echo Download from https://www.python.org/downloads/
     pause
     exit /b 1
 )
+echo [OK] Python found
 
-echo [OK] Python найден
-
-REM Проверка FFmpeg
+REM Check FFmpeg
 ffmpeg -version >nul 2>&1
 if errorlevel 1 (
-    echo [ПРЕДУПРЕЖДЕНИЕ] FFmpeg не найден!
-    echo Видео не будут создаваться
-    echo Скачайте с https://gyan.dev/ffmpeg/builds/
+    echo [WARNING] FFmpeg not found!
+    echo Download from https://gyan.dev/ffmpeg/builds/
 ) else (
-    echo [OK] FFmpeg найден
+    echo [OK] FFmpeg found
 )
 
 echo.
-echo Установка зависимостей Python...
-pip install -r requirements.txt >nul 2>&1
-echo [OK] Зависимости установлены
+echo Installing Python dependencies...
+pip install -r requirements.txt
+echo [OK] Dependencies installed
 
 echo.
 echo ========================================
-echo Запуск AutoVideo Generator
+echo Starting AutoVideo Generator
 echo ========================================
 echo.
-echo Откройте в браузере: http://localhost:5000
+echo Open in browser: http://localhost:5000
 echo.
-echo Для остановки нажмите Ctrl+C
+echo To stop press Ctrl+C
 echo.
 
 python webui\app.py
