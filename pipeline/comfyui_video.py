@@ -1,8 +1,8 @@
 """
-Video Generator via ComfyUI - LTX/Wan video generation
+Video Generator via ComfyUI - LTX 2.3 video generation
 
 Интеграция с ComfyUI для генерации видео из изображений
-Поддерживает LTX Video и Wan видео модели
+Поддерживает LTX 2.3 модели
 """
 
 import os
@@ -50,250 +50,207 @@ class ComfyUIVideoGenerator:
         except:
             return False
     
-    def get_models(self) -> Dict[str, List[str]]:
+    def get_available_models(self) -> Dict[str, List[str]]:
         """Получить список доступных моделей"""
         models = {
             "checkpoints": [],
-            "video_models": []
+            "vae": [],
+            "clip": []
         }
         
         if self.checkpoint_path.exists():
-            for f in self.checkpoint_path.glob("*.safetensors"):
+            for f in self.checkpoint_path.glob("*ltx*.safetensors"):
                 models["checkpoints"].append(f.name)
-            for f in self.checkpoint_path.glob("*.ckpt"):
+            for f in self.checkpoint_path.glob("*wan*.safetensors"):
                 models["checkpoints"].append(f.name)
+            for f in self.checkpoint_path.glob("*.vae.safetensors"):
+                models["vae"].append(f.name)
+            for f in self.checkpoint_path.glob("clip_*.safetensors"):
+                models["clip"].append(f.name)
         
         return models
+    
+    def get_object_info(self) -> Dict[str, Any]:
+        """Получить информацию о доступных нодах"""
+        try:
+            response = requests.get(f"{self.api_url}/api/object_info", timeout=10)
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            logger.error(f"Cannot get object info: {e}")
+        return {}
     
     def generate_video_ltx(self, 
                         image_path: str,
                         prompt: str,
                         output_path: str,
-                        model: str = "ltx_video.safetensors",
+                        model_name: str = "ltx-2.3-22b-dev-fp8.safetensors",
+                        width: int = 1024,
+                        height: int = 1792,
                         num_frames: int = 81,
                         fps: int = 24,
-                        seed: int = 42) -> str:
+                        seed: int = 42,
+                        cfg_scale: float = 0.8,
+                        steps: int = 5) -> str:
         """
-        Генерировать видео через LTX Video 模型
+        Генерировать видео через LTX 2.3
         
         Args:
             image_path: Путь к входному изображению
             prompt: Текстовый промпт
             output_path: Путь для сохранения видео
-            model: Название модели
+            model_name: Название модели
+            width: Ширина
+            height: Высота
             num_frames: Количество кадров
             fps: Кадров в секунду
-            seed: Сид для генерации
+            seed: Сид
+            cfg_scale: CFG scale
+            steps: Шаги
             
         Returns:
             Путь к сгенерированному видео
         """
-        logger.info(f"Generating video via LTX: {prompt[:50]}...")
+        logger.info(f"Generating video via LTX 2.3: {prompt[:50]}...")
         
-        # Workflow для LTX Video
-        workflow = self._create_ltx_workflow(
-            image_path=image_path,
-            prompt=prompt,
-            output_path=output_path,
-            model=model,
-            num_frames=num_frames,
-            fps=fps,
-            seed=seed
-        )
+        # Получаем информацию о нодах
+        object_info = self.get_object_info()
+        
+        # Определяем доступные ноды
+        has_ltx_sampler = "LTXVideoSampler" in object_info
+        has_video_combine = "VideoCombine" in object_info
+        
+        if has_ltx_sampler:
+            return self._generate_via_ltx_sampler(
+                image_path, prompt, output_path, model_name,
+                width, height, num_frames, fps, seed, cfg_scale, steps
+            )
+        else:
+            # Пробуем альтернативный метод
+            logger.warning("LTXVideoSampler not found, trying alternative")
+            return self._generate_alternative(
+                image_path, prompt, output_path, model_name
+            )
+    
+    def _generate_via_ltx_sampler(self,
+                                image_path: str,
+                                prompt: str,
+                                output_path: str,
+                                model_name: str,
+                                width: int,
+                                height: int,
+                                num_frames: int,
+                                fps: int,
+                                seed: int,
+                                cfg_scale: float,
+                                steps: int) -> str:
+        """Генерировать через LTXVideoSampler"""
+        
+        workflow = {
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "LoadImage",
+                    "widgets_values": ["image"]
+                },
+                {
+                    "id": 2,
+                    "type": "CLIPTextEncode",
+                    "widgets_values": [prompt]
+                },
+                {
+                    "id": 3,
+                    "type": "CLIPTextEncode", 
+                    "widgets_values": ["blurry, low quality, bad anatomy, text, watermark"]
+                },
+                {
+                    "id": 4,
+                    "type": "LTXVideoLoader",
+                    "widgets_values": [model_name]
+                },
+                {
+                    "id": 5,
+                    "type": "DualCLIPLoader",
+                    "widgets_values": ["clip_l.safetensors", "clip_g.safetensors"]
+                },
+                {
+                    "id": 6,
+                    "type": "VASelector", 
+                    "widgets_values": ["vae.safetensors"]
+                },
+                {
+                    "id": 7,
+                    "type": "LTXVideoSampler",
+                    "widgets_values": [
+                        width, height, num_frames, fps, 1, seed,
+                        cfg_scale, steps, "DPM++ 2M", "normal", 1
+                    ]
+                },
+                {
+                    "id": 8,
+                    "type": "VideoCombine",
+                    "widgets_values": ["mp4", "h264", "none", "output.mp4"]
+                },
+                {
+                    "id": 9,
+                    "type": "PreviewVideo",
+                    "widgets_values": []
+                }
+            ],
+            "links": [
+                [2, 1, 0, "IMAGE", "IMAGE"],
+                [4, 4, 0, "MODEL", "MODEL"],
+                [5, 5, 0, "CLIP", "CLIP"],
+                [6, 2, "CONDITIONING", "CONDITIONING"],
+                [7, 3, "CONDITIONING", "CONDITIONING"],
+                [8, 6, "VAE", "VAE"],
+                [9, 7, "VIDEO", "VIDEO"]
+            ]
+        }
         
         return self._execute_workflow(workflow, output_path)
     
-    def generate_video_wan(self,
-                     image_path: str,
-                     prompt: str,
-                     output_path: str,
-                     model: str = "wan.safetensors",
-                     num_frames: int = 81,
-                     fps: int = 24,
-                     seed: int = 42) -> str:
-        """
-        Генерировать видео через Wan 模型
+    def _generate_alternative(self,
+                           image_path: str,
+                           prompt: str,
+                           output_path: str,
+                           model_name: str) -> str:
+        """Альтернативный метод генерации"""
         
-        Args:
-            image_path: Путь к входному изображению
-            prompt: Текстовый промпт
-            output_path: Путь для сохранения видео
-            model: Название модели
-            num_frames: Количество кадров
-            fps: Кадров в секунду
-            seed: Сид для генерации
-            
-        Returns:
-            Путь к сгенерированному видео
-        """
-        logger.info(f"Generating video via Wan: {prompt[:50]}...")
-        
-        # Workflow для Wan
-        workflow = self._create_wan_workflow(
-            image_path=image_path,
-            prompt=prompt,
-            output_path=output_path,
-            model=model,
-            num_frames=num_frames,
-            fps=fps,
-            seed=seed
-        )
-        
-        return self._execute_workflow(workflow, output_path)
-    
-    def _create_ltx_workflow(self,
-                        image_path: str,
-                        prompt: str,
-                        output_path: str,
-                        model: str,
-                        num_frames: int,
-                        fps: int,
-                        seed: int) -> dict:
-        """Создать workflow для LTX Video"""
-        
-        # Base workflow - нужно настроить под вашу версию ComfyUI
+        # Пробуем базовый workflow
         workflow = {
-            "3": {
-                "inputs": {
-                    "image_path": image_path,
-                    "choose_image_to_upload": "image"
+            "prompt": {
+                "1": {"inputs": {"image": image_path}, "class_type": "LoadImage"},
+                "2": {"inputs": {"text": prompt}, "class_type": "CLIPTextEncode"},
+                "3": {
+                    "inputs": {"model": model_name},
+                    "class_type": "LTXVideoLoader"
                 },
-                "class_type": "LoadImage",
-                "_meta": {"title": "Load Image"}
-            },
-            "4": {
-                "inputs": {
-                    "text": prompt,
-                    "clip": ["5", 0]
-                },
-                "class_type": "CLIPTextEncode",
-                "_meta": {"title": "CLIP Text Encode"}
-            },
-            "5": {
-                "inputs": {
-                    "model_name": model
-                },
-                "class_type": "UNETLoader",
-                "_meta": {"title": "Load UNET"}
-            },
-            "6": {
-                "inputs": {
-                    "width": 512,
-                    "height": 896,
-                    "video_frames": num_frames,
-                    "fps": fps,
-                    "batch_size": 1,
-                    "seed": seed,
-                    "noise": ["7", 0],
-                    "model": ["5", 0],
-                    "positive": ["4", 0],
-                    "negative": ["4", 0],
-                    "vae": ["8", 0]
-                },
-                "class_type": "LTXVideoSampler",
-                "_meta": {"title": "LTX Video Sampler"}
-            },
-            "7": {
-                "inputs": {
-                    "noise_type": "gaussian",
-                    "seed": seed
-                },
-                "class_type": "Seed",
-                "_meta": {"title": "Seed"}
-            },
-            "8": {
-                "inputs": {
-                    "model_name": "vae.safetensors"
-                },
-                "class_type": "VAELoader",
-                "_meta": {"title": "Load VAE"}
-            },
-            "9": {
-                "inputs": {
-                    "filename_prefix": "ltx_video",
-                    "images": ["3", 0],
-                    "video_encoder": ["6", 0]
-                },
-                "class_type": "SaveVideo",
-                "_meta": {"title": "Save Video"}
+                "4": {
+                    "inputs": {
+                        "model": ["3", 0],
+                        "positive": ["2", 0],
+                        "image": ["1", 0]
+                    },
+                    "class_type": "LTXVideoSampler"
+                }
             }
         }
         
-        return workflow
-    
-    def _create_wan_workflow(self,
-                          image_path: str,
-                          prompt: str,
-                          output_path: str,
-                          model: str,
-                          num_frames: int,
-                          fps: int,
-                          seed: int) -> dict:
-        """Создать workflow для Wan"""
-        
-        workflow = {
-            "3": {
-                "inputs": {
-                    "image_path": image_path,
-                    "choose_image_to_upload": "image"
-                },
-                "class_type": "LoadImage",
-                "_meta": {"title": "Load Image"}
-            },
-            "4": {
-                "inputs": {
-                    "text": prompt,
-                    "clip": ["5", 0]
-                },
-                "class_type": "CLIPTextEncode",
-                "_meta": {"title": "CLIP Text Encode"}
-            },
-            "5": {
-                "inputs": {
-                    "model_name": model
-                },
-                "class_type": "UNETLoader",
-                "_meta": {"title": "Load UNET"}
-            },
-            "6": {
-                "inputs": {
-                    "width": 512,
-                    "height": 896,
-                    "video_frames": num_frames,
-                    "fps": fps,
-                    "batch_size": 1,
-                    "seed": seed,
-                    "image": ["3", 0],
-                    "model": ["5", 0],
-                    "positive": ["4", 0],
-                    "negative": ["4", 0]
-                },
-                "class_type": "WanVideoSampler",
-                "_meta": {"title": "Wan Video Sampler"}
-            },
-            "9": {
-                "inputs": {
-                    "filename_prefix": "wan_video",
-                    "frames": ["6", 0]
-                },
-                "class_type": "SaveVideo",
-                "_meta": {"title": "Save Video"}
-            }
-        }
-        
-        return workflow
+        try:
+            return self._execute_workflow(workflow, output_path)
+        except Exception as e:
+            logger.error(f"Alternative generation failed: {e}")
+            raise
     
     def _execute_workflow(self, workflow: dict, output_path: str) -> str:
         """Выполнить workflow через ComfyUI API"""
         
-        # Запустить промпт
-        prompt_data = {"prompt": workflow}
-        
         try:
             response = requests.post(
                 f"{self.api_url}/prompt", 
-                json=prompt_data,
-                timeout=300
+                json={"prompt": workflow},
+                timeout=30
             )
             response.raise_for_status()
             
@@ -301,24 +258,22 @@ class ComfyUIVideoGenerator:
             prompt_id = result.get("prompt_id")
             
             if not prompt_id:
-                raise ValueError(f"No prompt_id in response: {result}")
+                raise ValueError(f"No prompt_id: {result}")
             
-            # Ждать выполнения
+            # Ждем выполнения
             status = self._wait_for_completion(prompt_id)
             
             if status.get("status") == "success":
-                logger.info(f"Video generated successfully")
                 return output_path
             else:
                 raise RuntimeError(f"Generation failed: {status}")
                 
         except requests.exceptions.ConnectionError:
             logger.error(f"Cannot connect to ComfyUI at {self.api_url}")
-            logger.error("Make sure ComfyUI is running!")
             raise
     
     def _wait_for_completion(self, prompt_id: str, timeout: int = 600) -> dict:
-        """Ждать выполнения промпта"""
+        """Ждать выполнения"""
         
         start_time = time.time()
         
@@ -332,22 +287,19 @@ class ComfyUIVideoGenerator:
                 if response.status_code == 200:
                     data = response.json()
                     prompt_data = data.get(prompt_id, {})
-                    
                     status = prompt_data.get("status", "")
                     
                     if status == "success":
-                        return {"status": "success", "data": prompt_data}
+                        return {"status": "success"}
                     elif status == "failed":
-                        error_msg = prompt_data.get("error", "Unknown error")
-                        return {"status": "failed", "error": error_msg}
+                        return {"status": "failed"}
                 
                 time.sleep(2)
-                
             except Exception as e:
-                logger.warning(f"Error checking status: {e}")
+                logger.warning(f"Error: {e}")
                 time.sleep(2)
         
-        return {"status": "timeout", "error": "Timeout after 10 minutes"}
+        return {"status": "timeout"}
 
 
 def generate_video_via_comfyui(image_path: str,
@@ -355,31 +307,14 @@ def generate_video_via_comfyui(image_path: str,
                               output_path: str,
                               model_type: str = "ltx",
                               **kwargs) -> str:
-    """
-    Удобная функция для генерации видео
-    
-    Args:
-        image_path: Путь к изображению
-        prompt: Текстовый промпт
-        output_path: Путь для сохранения
-        model_type: "ltx" или "wan"
-        
-    Returns:
-        Путь к видео
-    """
+    """Удобная функция"""
     generator = ComfyUIVideoGenerator()
-    
-    if model_type.lower() == "ltx":
-        return generator.generate_video_ltx(image_path, prompt, output_path, **kwargs)
-    else:
-        return generator.generate_video_wan(image_path, prompt, output_path, **kwargs)
+    return generator.generate_video_ltx(image_path, prompt, output_path, **kwargs)
 
 
 if __name__ == "__main__":
-    # Тест
     logging.basicConfig(level=logging.INFO)
     
     generator = ComfyUIVideoGenerator()
-    
-    print(f"ComfyUI running: {generator.is_comfyui_running()}")
-    print(f"Available models: {generator.get_models()}")
+    print(f"Running: {generator.is_comfyui_running()}")
+    print(f"Models: {generator.get_available_models()}")
