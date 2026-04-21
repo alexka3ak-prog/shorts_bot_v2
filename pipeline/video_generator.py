@@ -223,8 +223,15 @@ class VideoGenerator:
         logger.info(f"Generating {len(scenes)} videos...")
         
         video_paths = []
-        for scene, image_path in zip(scenes, image_paths):
-            scene_id = scene["scene_id"]
+        for i, (scene, image_path) in enumerate(zip(scenes, image_paths)):
+            # Validate and fix scene
+            if isinstance(scene, str):
+                scene = {"scene_id": i+1, "prompt": scene}
+            
+            scene_id = scene.get("scene_id", i+1)
+            if scene_id == 0:
+                scene_id = i + 1
+                
             prompt = scene.get("prompt", "")
             duration = scene.get("duration", SCENE_DURATION)
             

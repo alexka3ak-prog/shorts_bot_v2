@@ -115,8 +115,12 @@ class ImageGenerator:
             guidance_scale=7.5
         )
         
-        image = result.images[0]
-        image.save(output_path, "PNG")
+        # Check result type before accessing
+        if hasattr(result, 'images') and isinstance(result.images, list) and len(result.images) > 0:
+            image = result.images[0]
+            image.save(output_path, "PNG")
+        else:
+            raise ValueError("SDXL returned invalid result")
     
     def _generate_via_api(self, prompt: str, output_path: Path):
         """Generate image using Stability AI API"""
@@ -220,8 +224,16 @@ class ImageGenerator:
         logger.info(f"Generating {len(scenes)} images...")
         
         image_paths = []
-        for scene in scenes:
-            scene_id = scene["scene_id"]
+        for i, scene in enumerate(scenes):
+            # Validate and fix scene
+            if isinstance(scene, str):
+                logger.warning(f"Scene {i} is a string, converting to dict")
+                scene = {"scene_id": i+1, "description": scene, "prompt": scene}
+            
+            scene_id = scene.get("scene_id", i+1)
+            if scene_id == 0:
+                scene_id = i + 1
+                
             description = scene.get("description", "")
             prompt = scene.get("prompt", description)
             
