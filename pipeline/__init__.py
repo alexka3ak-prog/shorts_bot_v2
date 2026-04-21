@@ -7,6 +7,7 @@ from .image_generator import ImageGenerator, generate_image
 from .video_generator import VideoGenerator, generate_video
 from .video_concatenator import VideoConcatenator, concatenate_videos
 from .comfyui_video import ComfyUIVideoGenerator, generate_video_via_comfyui
+from .simple_video import SimpleVideoGenerator, generate_simple_video
 
 __all__ = [
     "generate_script",
@@ -19,4 +20,6 @@ __all__ = [
     "concatenate_videos",
     "ComfyUIVideoGenerator",
     "generate_video_via_comfyui",
+    "SimpleVideoGenerator",
+    "generate_simple_video",
 ]

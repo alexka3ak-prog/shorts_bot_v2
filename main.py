@@ -30,7 +30,8 @@ from pipeline import (
     ImageGenerator,
     VideoGenerator,
     VideoConcatenator,
-    ComfyUIVideoGenerator
+    ComfyUIVideoGenerator,
+    SimpleVideoGenerator
 )
 from config import (
     OUTPUT_DIR,
@@ -77,11 +78,19 @@ class AutoVideoPipeline:
         
         # ComfyUI video generator (для LTX/Wan)
         self.comfyui_generator = None
+        self.simple_generator = None
+        
         if video_model in ["ltx", "wan"]:
             try:
                 self.comfyui_generator = ComfyUIVideoGenerator()
+                # Check if LTX nodes are available
+                nodes = self.comfyui_generator.check_ltx_nodes()
+                if not nodes.get("LTXVideoSampler"):
+                    logger.warning("LTX nodes not found, using simple fallback")
+                    self.simple_generator = SimpleVideoGenerator(str(self.temp_dir))
             except Exception as e:
-                logger.warning(f"ComfyUI not available: {e}")
+                logger.warning(f"ComfyUI not available: {e}, using simple fallback")
+                self.simple_generator = SimpleVideoGenerator(str(self.temp_dir))
         
         self.concatenator = VideoConcatenator(str(self.output_dir), str(self.temp_dir))
         
@@ -137,18 +146,29 @@ class AutoVideoPipeline:
             logger.info(f"  Scene {scene_id}: {os.path.basename(img_path)}")
         
         # Step 3: Generate videos from images
-        logger.info("\n[3/5] Generating videos with LTX 2.3...")
-        video_paths = self.video_generator.generate_all_videos(script, image_paths)
+        logger.info("\n[3/5] Generating videos...")
         
-        for i, (scene, vid_path) in enumerate(zip(script, video_paths)):
-            # Safely get scene_id
-            if isinstance(scene, dict):
-                scene_id = scene.get("scene_id", i+1)
-                if scene_id == 0:
-                    scene_id = i + 1
-            else:
-                scene_id = i + 1
-            logger.info(f"  Scene {scene_id}: {os.path.basename(vid_path)}")
+        if self.simple_generator:
+            # Use simple FFmpeg-based generator
+            logger.info("Using simple video generator (FFmpeg)")
+            video_paths = []
+            for i, (scene, img_path) in enumerate(zip(script, image_paths)):
+                prompt = scene.get("prompt", "") if isinstance(scene, dict) else ""
+                scene_id = scene.get("scene_id", i+1) if isinstance(scene, dict) else i+1
+                duration = scene.get("duration", 4.0)
+                
+                output_path = self.temp_dir / f"scene_{scene_id}.mp4"
+                vid_path = self.simple_generator.generate_video(
+                    img_path, str(output_path), duration
+                )
+                video_paths.append(vid_path)
+                logger.info(f"  Scene {scene_id}: {os.path.basename(vid_path)}")
+        else:
+            # Use default VideoGenerator
+            video_paths = self.video_generator.generate_all_videos(script, image_paths)
+            for i, (scene, vid_path) in enumerate(zip(script, video_paths)):
+                scene_id = scene.get("scene_id", i+1) if isinstance(scene, dict) else i+1
+                logger.info(f"  Scene {scene_id}: {os.path.basename(vid_path)}")
         
         # Step 4: Concatenate videos
         logger.info("\n[4/5] Concatenating scene videos...")
