@@ -89,6 +89,17 @@ class ComfyUIVideoGenerator:
             logger.error(f"Cannot get object info: {e}")
         return {}
     
+    def check_ltx_nodes(self) -> Dict[str, bool]:
+        """Проверить наличие LTX нод"""
+        info = self.get_object_info()
+        return {
+            "LTXVideoLoader": "LTXVideoLoader" in info,
+            "LTXVideoSampler": "LTXVideoSampler" in info,
+            "VideoCombine": "VideoCombine" in info,
+            "DualCLIPLoader": "DualCLIPLoader" in info,
+            "VASelector": "VASelector" in info,
+        }
+    
     def generate_video_ltx(self, 
                         image_path: str,
                         prompt: str,
