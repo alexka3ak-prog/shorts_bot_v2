@@ -36,7 +36,7 @@ USE_LOCAL_LTX = os.getenv("USE_LOCAL_LTX", "true").lower() == "true"
 LTX_API_KEY = os.getenv("LTX_API_KEY", "")
 LTX_API_URL = os.getenv("LTX_API_URL", "https://api.ltx.latent.space/v1/video/generate")
 
-# Вариант 3: ComfyUI (LTX/Wan) - РЕКОМЕНДУЕТСЯ
+# Вариант 3: ComfyUI (LTX 2.3) - РЕКОМЕНДУЕТСЯ
 USE_COMFYUI = os.getenv("USE_COMFYUI", "true").lower() == "true"
 COMFYUI_HOST = os.getenv("COMFYUI_HOST", "127.0.0.1")
 COMFYUI_PORT = int(os.getenv("COMFYUI_PORT", "8188"))
@@ -44,6 +44,12 @@ COMFYUI_CHECKPOINT_PATH = os.getenv(
     "COMFYUI_CHECKPOINT_PATH", 
     r"D:\Models\ComfyUI_Models\models\checkpoints"
 )
+
+# LTX 2.3 model names
+LTX_MODEL_NAME = "ltx-2.3-22b-dev-fp8.safetensors"  # или "ltx-2.3-22b-distilled-fp8.safetensors"
+LTX_VAE_NAME = "LTX23_video_vae_bf16.safetensors"
+LTX_CLIP_L = "clip_l.safetensors"
+LTX_CLIP_G = "clip_g.safetensors"
 
 # Default модель для видео: "ltx" или "wan"
 DEFAULT_VIDEO_MODEL = os.getenv("DEFAULT_VIDEO_MODEL", "ltx")

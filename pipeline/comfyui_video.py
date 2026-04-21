@@ -10,7 +10,6 @@ import json
 import time
 import logging
 import requests
-import subprocess
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -21,10 +20,20 @@ COMFYUI_HOST = os.environ.get("COMFYUI_HOST", "127.0.0.1")
 COMFYUI_PORT = int(os.environ.get("COMFYUI_PORT", "8188"))
 COMFYUI_API_URL = f"http://{COMFYUI_HOST}:{COMFYUI_PORT}"
 
-# Путь к чекпойнтам
+# Пути к моделям
 DEFAULT_CHECKPOINT_PATH = os.environ.get(
     "COMFYUI_CHECKPOINT_PATH", 
     r"D:\Models\ComfyUI_Models\models\checkpoints"
+)
+
+DEFAULT_VAE_PATH = os.environ.get(
+    "COMFYUI_VAE_PATH",
+    r"D:\Models\ComfyUI_Models\models\vae"
+)
+
+DEFAULT_TEXT_ENCODER_PATH = os.environ.get(
+    "COMFYUI_TEXT_ENCODER_PATH",
+    r"D:\Models\ComfyUI_Models\models\text_encoders"
 )
 
 
