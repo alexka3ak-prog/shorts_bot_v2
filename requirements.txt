@@ -1,0 +1,29 @@
+# AutoVideo Generator - Requirements
+
+# Core
+requests>=2.31.0
+pillow>=10.0.0
+numpy>=1.24.0
+
+# Web UI
+flask>=3.0.0
+
+# Telegram Bot
+python-telegram-bot>=20.0
+
+# Video processing
+moviepy>=1.0.3
+ffmpeg-python>=0.2.0
+
+# ============================================
+# LOCAL MODELS (установите нужное)
+# ============================================
+
+# LLM - Установите Ollama отдельно: https://ollama.com
+# Затем скачайте модель: ollama pull qwen2:8b
+
+# Для локального Stable Diffusion XL:
+# pip install torch>=2.0.0 diffusers>=0.25.0 transformers>=4.36.0 accelerate>=0.25.0
+
+# Опционально для CV
+# opencv-python>=4.8.0

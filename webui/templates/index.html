@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoVideo Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ccc;
+            font-weight: 500;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 16px;
+            resize: vertical;
+            min-height: 120px;
+            transition: border-color 0.3s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+        
+        input[type="text"], select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 14px;
+        }
+        
+        input[type="text"]:focus, select:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+        
+        select {
+            cursor: pointer;
+        }
+        
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 600px) {
+            .row {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            color: #000;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 217, 255, 0.3);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-download {
+            background: linear-gradient(90deg, #ff6b6b, #ffa500);
+            color: #000;
+            display: none;
+        }
+        
+        .btn-download:hover {
+            transform: translateY(-2px);
+        }
+        
+        /* Status Section */
+        .status-card {
+            display: none;
+        }
+        
+        .status-card.active {
+            display: block;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+        
+        .status-text {
+            text-align: center;
+            color: #888;
+            font-size: 14px;
+        }
+        
+        .status-message {
+            text-align: center;
+            color: #00d9ff;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        
+        .error-message {
+            color: #ff6b6b;
+            text-align: center;
+            margin-top: 10px;
+        }
+        
+        /* Format Info */
+        .format-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        /* Models Section */
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .model-option {
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            text-align: center;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        
+        .model-option:hover {
+            background: rgba(0, 217, 255, 0.1);
+        }
+        
+        .model-option.selected {
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 AutoVideo Generator</h1>
+        <p class="subtitle">Создавайте видео из текста с помощью AI</p>
+        
+        <div class="card">
+            <div class="form-group">
+                <label for="idea">📝 Описание видео</label>
+                <textarea id="idea" placeholder="Например: Путешествие через космос к новым планетам, где каждая планета имеет свою уникальную атмосферу и живописные пейзажи..."></textarea>
+            </div>
+            
+            <div class="row">
+                <div class="form-group">
+                    <label for="format">📱 Формат видео</label>
+                    <select id="format">
+                        {% for key, fmt in formats.items() %}
+                        <option value="{{ key }}" {% if key == default_format %}selected{% endif %}>
+                            {{ fmt.description }} ({{ fmt.aspect_ratio }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="scenes">🎬 Количество сцен</label>
+                    <select id="scenes">
+                        <option value="2">2 сцены</option>
+                        <option value="3">3 сцены</option>
+                        <option value="4" selected>4 сцены</option>
+                        <option value="5">5 сцен</option>
+                        <option value="6">6 сцен</option>
+                        <option value="8">8 сцен</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>🤖 Модель LLM (Qwen3)</label>
+                <div class="models-grid">
+                    <div class="model-option selected" data-value="qwen3:8b">
+                        qwen3:8b<br><small>(5.2 GB)</small>
+                    </div>
+                    <div class="model-option" data-value="qwen3:4b">
+                        qwen3:4b<br><small>(2.5 GB)</small>
+                    </div>
+                    <div class="model-option" data-value="qwen3:14b">
+                        qwen3:14b<br><small>(9.3 GB)</small>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="btn btn-primary" id="generateBtn" onclick="startGeneration()">
+                🚀 Создать видео
+            </button>
+            
+            <button class="btn btn-download" id="downloadBtn" onclick="downloadVideo()">
+                ⬇️ Скачать видео
+            </button>
+        </div>
+        
+        <div class="card status-card" id="statusCard">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="status-text" id="statusText">Ожидание...</div>
+            <div class="status-message" id="statusMessage"></div>
+            <div class="error-message" id="errorMessage"></div>
+        </div>
+    </div>
+    
+    <script>
+        let selectedModel = 'qwen3:8b';
+        
+        // Model selection
+        document.querySelectorAll('.model-option').forEach(option => {
+            option.addEventListener('click', () => {
+                document.querySelectorAll('.model-option').forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+                selectedModel = option.dataset.value;
+            });
+        });
+        
+        // Start generation
+        async function startGeneration() {
+            const idea = document.getElementById('idea').value.trim();
+            if (!idea) {
+                alert('Введите описание видео!');
+                return;
+            }
+            
+            const format = document.getElementById('format').value;
+            const scenes = document.getElementById('scenes').value;
+            
+            // Show status
+            document.getElementById('statusCard').classList.add('active');
+            document.getElementById('generateBtn').disabled = true;
+            document.getElementById('generateBtn').textContent = '⏳ Генерация...';
+            document.getElementById('downloadBtn').style.display = 'none';
+            document.getElementById('errorMessage').textContent = '';
+            
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        idea: idea,
+                        format: format,
+                        scenes: parseInt(scenes),
+                        model: selectedModel
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    alert(result.error);
+                    resetButtons();
+                    return;
+                }
+                
+                // Start polling for status
+                pollStatus();
+                
+            } catch (err) {
+                alert('Ошибка: ' + err.message);
+                resetButtons();
+            }
+        }
+        
+        // Poll status
+        async function pollStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const state = await response.json();
+                
+                document.getElementById('progressFill').style.width = state.progress + '%';
+                document.getElementById('statusText').textContent = `Статус: ${state.status}`;
+                document.getElementById('statusMessage').textContent = state.message || '';
+                
+                if (state.error) {
+                    document.getElementById('errorMessage').textContent = state.error;
+                    resetButtons();
+                    return;
+                }
+                
+                if (state.status === 'completed') {
+                    document.getElementById('downloadBtn').style.display = 'block';
+                    resetButtons();
+                    document.getElementById('statusMessage').textContent = '✅ Видео готово! Нажмите кнопку ниже для скачивания.';
+                } else if (state.status === 'generating') {
+                    setTimeout(pollStatus, 2000);
+                }
+                
+            } catch (err) {
+                console.error(err);
+                setTimeout(pollStatus, 2000);
+            }
+        }
+        
+        function resetButtons() {
+            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('generateBtn').textContent = '🚀 Создать видео';
+        }
+        
+        // Download video
+        async function downloadVideo() {
+            window.location.href = '/api/download';
+        }
+    </script>
+</body>
+</html>
