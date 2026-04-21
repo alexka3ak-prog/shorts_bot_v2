@@ -170,6 +170,13 @@ def validate_script(script: List[Dict[str, Any]]) -> bool:
     required_fields = ["scene_id", "description", "prompt", "duration", "transition"]
     
     for i, scene in enumerate(script):
+        # Fix missing or wrong scene_id
+        if "scene_id" not in scene:
+            scene["scene_id"] = i + 1
+        elif scene["scene_id"] == 0:
+            scene["scene_id"] = i + 1
+        
+        # Validate required fields
         for field in required_fields:
             if field not in scene:
                 raise ValueError(f"Scene {i} missing required field: {field}")
