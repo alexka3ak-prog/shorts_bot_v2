@@ -90,17 +90,31 @@ INSTAGRAM_FORMATS = {
         "max_duration": 60,
         "description": "Instagram Feed (portrait)"
     },
+    "youtube": {
+        "width": 1920,
+        "height": 1080,  # 16:9
+        "aspect_ratio": "16:9",
+        "max_duration": 600,
+        "description": "YouTube / TikTok Landscape"
+    },
+    "youtube_short": {
+        "width": 1080,
+        "height": 1920,  # 9:16
+        "aspect_ratio": "9:16",
+        "max_duration": 180,
+        "description": "YouTube Shorts"
+    },
     "default": {
-        "width": 1024,
-        "height": 1024,
-        "aspect_ratio": "1:1",
+        "width": 1920,
+        "height": 1080,  # 16:9 - DEFAULT
+        "aspect_ratio": "16:9",
         "max_duration": 60,
-        "description": "Default square format"
+        "description": "Default 16:9 landscape"
     }
 }
 
-# Default Instagram format
-DEFAULT_FORMAT = "reels"
+# Default format
+DEFAULT_FORMAT = "youtube"  # 16:9 landscape
 
 # Output Settings
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")

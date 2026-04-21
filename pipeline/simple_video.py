@@ -1,11 +1,12 @@
 """
-Simple Video Generator - FFmpeg based fallback
-Создает видео из изображений с простыми эффектами
+Simple Video Generator - FFmpeg based
+Creates video from images with various effects
 """
 
 import os
 import logging
 import subprocess
+import random
 from pathlib import Path
 from typing import List, Optional
 
@@ -16,7 +17,7 @@ FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
 
 
 class SimpleVideoGenerator:
-    """Простой генератор видео через FFmpeg"""
+    """Simple video generator via FFmpeg"""
     
     def __init__(self, output_dir: str = "output/temp"):
         self.output_dir = Path(output_dir)
@@ -28,7 +29,7 @@ class SimpleVideoGenerator:
             logger.warning("FFmpeg not found, using fallback")
     
     def _check_ffmpeg(self) -> bool:
-        """Проверить FFmpeg"""
+        """Check FFmpeg"""
         try:
             subprocess.run(
                 ["ffmpeg", "-version"], 
@@ -43,20 +44,21 @@ class SimpleVideoGenerator:
                    image_path: str,
                    output_path: str,
                    duration: float = 4.0,
-                   fps: int = 24,
+                   fps: int = 30,
                    effect: str = "zoom") -> str:
         """
-        Генерировать видео из изображения
+        Generate video from image
         
         Args:
-            image_path: Путь к изображению
-            output_path: Путь для сохранения видео
-            duration: Длительность в секундах
-            fps: Кадров в секунду
-            effect: Эффект - "zoom", "fade", "pan"
+            image_path: Path to image
+            output_path: Path for output video
+            duration: Duration in seconds
+            fps: Frames per second
+            effect: Effect name - "zoom", "zoom_in", "pan_left", "pan_right", 
+                   "tilt_up", "tilt_down", "circle", "wave", "fade", "float", "random"
             
         Returns:
-            Путь к видео
+            Path to video
         """
         image_path = Path(image_path)
         output_path = Path(output_path)
@@ -73,30 +75,68 @@ class SimpleVideoGenerator:
     
     def _generate_ffmpeg(self, image_path: Path, output_path: Path,
                       duration: float, fps: int, effect: str) -> str:
-        """FFmpeg генерация"""
+        """FFmpeg generation with various effects"""
         
         total_frames = int(duration * fps)
         
-        if effect == "zoom":
-            # Плавный зум эффект
-            filter_complex = (
+        # Animation effects
+        effects = {
+            # Smooth zoom
+            "zoom": (
                 f"zoompan=z='min(zoom+0.001,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                 f"d={total_frames}:fps={fps},format=yuv420p"
-            )
-        elif effect == "pan":
-            # Плавное движение
-            filter_complex = (
-                f"zoompan=x=lerp(0,iw/4,n/{total_frames}):y=lerp(0,ih/4,n/{total_frames}):"
+            ),
+            # Zoom in center
+            "zoom_in": (
+                f"zoompan=z='1+0.4*sin(n/{total_frames}*3.14159)':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':"
                 f"d={total_frames}:fps={fps},format=yuv420p"
-            )
-        elif effect == "fade":
-            # Fade эффект
-            filter_complex = (
-                f"fade=t=in:st=0:d=1,fade=t=out:st={duration-1}:d=1,"
-                f"format=yuv420p"
-            )
-        else:
-            filter_complex = "format=yuv420p"
+            ),
+            # Pan left
+            "pan_left": (
+                f"zoompan=x=lerp(0,iw/4,n/{total_frames}):y='ih/4':"
+                f"d={total_frames}:fps={fps},zoom='1-0.2*sin(n/{total_frames}*3.14159)',format=yuv420p"
+            ),
+            # Pan right
+            "pan_right": (
+                f"zoompan=x=lerp(iw/4,0,n/{total_frames}):y='ih/4':"
+                f"d={total_frames}:fps={fps},zoom='1-0.2*sin(n/{total_frames}*3.14159)',format=yuv420p"
+            ),
+            # Tilt up
+            "tilt_up": (
+                f"zoompan=y=lerp(0,ih/4,n/{total_frames}):x='iw/4':"
+                f"d={total_frames}:fps={fps},format=yuv420p"
+            ),
+            # Tilt down
+            "tilt_down": (
+                f"zoompan=y=lerp(ih/4,0,n/{total_frames}):x='iw/4':"
+                f"d={total_frames}:fps={fps},format=yuv420p"
+            ),
+            # Circle motion
+            "circle": (
+                f"zoompan=x='iw/2+(iw/2.5)*cos(n/{total_frames}*6.28318)':y='ih/2+(ih/2.5)*sin(n/{total_frames}*6.28318)':"
+                f"zoom='1-0.3*sin(n/{total_frames}*6.28318)':d={total_frames}:fps={fps},format=yuv420p"
+            ),
+            # Wave
+            "wave": (
+                f"zoompan=x='iw/2+(iw/10)*sin(n/fps*3)':y='ih/2+(ih/10)*cos(n/fps*2)':"
+                f"d={total_frames}:fps={fps},format=yuv420p"
+            ),
+            # Fade only
+            "fade": (
+                f"fade=t=in:st=0:d=1,fade=t=out:st={duration-1}:d=1,format=yuv420p"
+            ),
+            # Float
+            "float": (
+                f"zoompan=y=lerp(-ih/10,ih/10,n/{total_frames}):x=lerp(-iw/10,iw/10,n/{total_frames}):"
+                f"d={total_frames}:fps={fps},format=yuv420p"
+            ),
+        }
+        
+        # Choose effect or random
+        if effect == "random":
+            effect = random.choice(list(effects.keys()))
+        
+        filter_complex = effects.get(effect, effects["zoom"])
         
         cmd = [
             "ffmpeg", "-y",
@@ -124,15 +164,13 @@ class SimpleVideoGenerator:
     
     def _generate_fallback(self, image_path: Path, output_path: Path,
                         duration: float, fps: int) -> str:
-        """Простой fallback - копирует изображение как видео placeholder"""
+        """Simple fallback - copies image as video placeholder"""
         import shutil
         
-        # Просто копируем как placeholder
-        # В реальном случае нужно установить ffmpeg
         output_path = output_path.with_suffix(".mp4")
         shutil.copy(image_path, output_path)
         
-        logger.warning(f"Created placeholder: {output_path} (install ffmpeg for real video)")
+        logger.warning(f"Created placeholder: {output_path}")
         return str(output_path)
 
 
@@ -140,7 +178,7 @@ def generate_simple_video(image_path: str,
                         output_path: str,
                         duration: float = 4.0,
                         effect: str = "zoom") -> str:
-    """Удобная функция"""
+    """Convenient function"""
     generator = SimpleVideoGenerator()
     return generator.generate_video(image_path, output_path, duration, effect=effect)
 
