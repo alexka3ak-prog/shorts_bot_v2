@@ -6,9 +6,14 @@ Script Generator - Uses LLM (Qwen3 via Ollama) to generate JSON video script fro
 2. Запустите: ollama serve
 3. Скачайте модель: ollama pull qwen3:8b
    (или qwen3:4b для более слабых ПК - 2.5GB)
+
+Поддержка персонажей и диалогов:
+- Каждая сцена может содержать персонажей с диалогами
+- Диалоги синхронизированы по времени с анимацией
 """
 import json
 import logging
+import re
 import requests
 from typing import List, Dict, Any, Optional
 from config import QWEN_MODEL_SIZE
@@ -47,7 +52,7 @@ def _generate_via_ollama(idea: str, num_scenes: int) -> List[Dict[str, Any]]:
     # Qwen3 model: qwen3:8b, qwen3:4b, qwen3:14b, qwen3:32b и т.д.
     ollama_model = f"qwen3:{QWEN_MODEL_SIZE}"
     
-    prompt = f"""Ты - креативный сценарист видео. На основе следующей идеи создай JSON-сценарий для видео из {num_scenes} сцен.
+    prompt = f"""Ты - креативный сценарист видео. На основе следующей идеи создай JSON-сценарий для видео из {num_scenes} сцен с персонажами и диалогами.
 
 ИДЕЯ: {idea}
 
@@ -55,18 +60,60 @@ def _generate_via_ollama(idea: str, num_scenes: int) -> List[Dict[str, Any]]:
 - scene_id: integer (1, 2, 3, и т.д.)
 - description: string (детальное визуальное описание для генерации изображения)
 - prompt: string (промпт для генерации видео с инструкциями по движению)
-- duration: float (длительность в секундах, 3-5)
+- duration: float (длительность в секундах, 3-8)
 - transition: string (эффект перехода: "fade", "dissolve", "slide_left", "slide_right", "zoom")
+- characters: array (массив персонажей в этой сцене)
+- dialogs: array (массив диалогов с временной синхронизацией)
+
+ПЕРСОНАЖ (каждый элемент characters):
+- name: string (имя персонажа)
+- role: string (роль: "protagonist", "antagonist", "supporting", "narrator")
+- appearance: string (описание внешности: одежда, мимика, жесты)
+- position: string (позиция в кадре: "left", "center", "right")
+
+ДИАЛОГ (каждый элемент dialogs):
+- character: string (имя персонажа)
+- text: string (текст реплики)
+- start_time: float (время начала в секундах от начала сцены)
+- emotion: string (эмоция: "neutral", "happy", "sad", "angry", "surprised", "excited")
 
 Верни ТОЛЬКО валидный JSON, без объяснений или markdown форматирования.
 Пример формата:
 [
   {{
     "scene_id": 1,
-    "description": "Огромная космическая туманность с закрученными цветами фиолетового и синего",
-    "prompt": "Медленное вращение и пульсирующее свечение, звезды мерцают на фоне",
-    "duration": 4.0,
-    "transition": "fade"
+    "description": "Уютная комната с камином, два персонажа сидят в креслах",
+    "prompt": "Мягкое освещение, легкое движение пламени в камине, персонажи с живой мимикой",
+    "duration": 6.0,
+    "transition": "fade",
+    "characters": [
+      {{
+        "name": "Мудрец",
+        "role": "narrator",
+        "appearance": "Пожилой мужчина с длинной седой бородой, в тёплой мантии",
+        "position": "left"
+      }},
+      {{
+        "name": "Путешественник",
+        "role": "protagonist",
+        "appearance": "Молодой человек в походной одежде, любопытный взгляд",
+        "position": "right"
+      }}
+    ],
+    "dialogs": [
+      {{
+        "character": "Мудрец",
+        "text": "Добро пожаловать, путник. Я ждал тебя.",
+        "start_time": 0.5,
+        "emotion": "happy"
+      }},
+      {{
+        "character": "Путешественник",
+        "text": "Я проделал долгий путь, чтобы найти тебя.",
+        "start_time": 2.5,
+        "emotion": "neutral"
+      }}
+    ]
   }}
 ]"""
 
@@ -187,6 +234,7 @@ def validate_script(script: List[Dict[str, Any]]) -> bool:
         True if valid, raises ValueError if invalid
     """
     required_fields = ["scene_id", "description", "prompt", "duration", "transition"]
+    optional_fields = ["characters", "dialogs"]
     
     for i, scene in enumerate(script):
         # Fix missing or wrong scene_id
@@ -199,8 +247,68 @@ def validate_script(script: List[Dict[str, Any]]) -> bool:
         for field in required_fields:
             if field not in scene:
                 raise ValueError(f"Scene {i} missing required field: {field}")
+        
+        # Initialize optional fields if missing
+        for field in optional_fields:
+            if field not in scene:
+                scene[field] = [] if field == "characters" or field == "dialogs" else ""
     
     return True
+
+
+def extract_characters_from_script(script: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """
+    Extract all unique characters from script with their descriptions
+    
+    Args:
+        script: List of scene dictionaries
+        
+    Returns:
+        Dictionary mapping character names to their definitions
+    """
+    characters = {}
+    
+    for scene in script:
+        characters_list = scene.get("characters", [])
+        for char in characters_list:
+            name = char.get("name", "")
+            if name and name not in characters:
+                characters[name] = {
+                    "role": char.get("role", "supporting"),
+                    "appearance": char.get("appearance", ""),
+                    "position": char.get("position", "center")
+                }
+    
+    return characters
+
+
+def extract_all_dialogs(script: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Extract all dialogs from script with scene context
+    
+    Args:
+        script: List of scene dictionaries
+        
+    Returns:
+        List of dialog dictionaries with scene_id and timing info
+    """
+    all_dialogs = []
+    scene_start_time = 0.0
+    
+    for scene in script:
+        scene_id = scene.get("scene_id", 0)
+        scene_duration = scene.get("duration", 4.0)
+        dialogs = scene.get("dialogs", [])
+        
+        for dialog in dialogs:
+            dialog_copy = dict(dialog)
+            dialog_copy["scene_id"] = scene_id
+            dialog_copy["global_start_time"] = scene_start_time + dialog.get("start_time", 0.0)
+            all_dialogs.append(dialog_copy)
+        
+        scene_start_time += scene_duration
+    
+    return all_dialogs
 
 
 if __name__ == "__main__":

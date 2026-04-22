@@ -1,62 +1,86 @@
 """
-Configuration settings for AutoVideo Generator
+Configuration settings for AutoVideo Generator - LOCAL VERSION
 
-Локальный запуск:
-1. LLM: Установите Ollama + qwen2:8b
-2. SDXL: Используйте локальный Diffusers или API
-3. LTX: Используйте локальный генератор или API
+Локальный запуск на ПК пользователя:
+1. Ollama + Qwen3:8b (сценарий)
+2. Diffusers/ComfyUI SDXL (изображения)  
+3. ComfyUI LTX 2.3 (видео)
 """
 import os
 
 # ============================================
-# LLM - Qwen3 via Ollama (локально)
+# LLM - Qwen3 через Ollama (локально)
 # ============================================
-# Доступные модели в Ollama: qwen3:0.6b, qwen3:1.7b, qwen3:4b, qwen3:8b, qwen3:14b, qwen3:32b, qwen3:235b
-# qwen3:8b = 5.2GB, qwen3:4b = 2.5GB
-QWEN_MODEL_SIZE = os.getenv("QWEN_MODEL_SIZE", "8b").lower()  # "8b", "4b", "14b", "32b"
+QWEN_MODEL_SIZE = os.getenv("QWEN_MODEL_SIZE", "8b")  # "8b", "4b", "14b"
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # ============================================
-# Stable Diffusion XL (локально или API)
+# IMAGE - Stable Diffusion XL (локально)
 # ============================================
-# Вариант 1: Локальный запуск через Diffusers (рекомендуется)
 USE_LOCAL_SDXL = os.getenv("USE_LOCAL_SDXL", "true").lower() == "true"
-
-# Вариант 2: Stability AI API (если нет GPU)
-STABILITY_API_KEY = os.getenv("STABILITY_API_KEY", "")
-STABILITY_API_URL = "https://api.stability.ai/v2beta/image-generation/text-to-image"
+STABILITY_API_KEY = os.getenv("STABILITY_API_KEY", "")  # Не используем - только локально
 
 # ============================================
-# LTX/Wan Video Generation (локально через ComfyUI)
+# VIDEO - LTX 2.3 через ComfyUI (локально)
 # ============================================
-# Вариант 1: Локальный генератор (базовый)
-USE_LOCAL_LTX = os.getenv("USE_LOCAL_LTX", "true").lower() == "true"
-
-# Вариант 2: LTX API
-LTX_API_KEY = os.getenv("LTX_API_KEY", "")
-LTX_API_URL = os.getenv("LTX_API_URL", "https://api.ltx.latent.space/v1/video/generate")
-
-# Вариант 3: ComfyUI (LTX 2.3) - РЕКОМЕНДУЕТСЯ
 USE_COMFYUI = os.getenv("USE_COMFYUI", "true").lower() == "true"
 COMFYUI_HOST = os.getenv("COMFYUI_HOST", "127.0.0.1")
 COMFYUI_PORT = int(os.getenv("COMFYUI_PORT", "8188"))
-COMFYUI_CHECKPOINT_PATH = os.getenv(
-    "COMFYUI_CHECKPOINT_PATH", 
-    r"D:\Models\ComfyUI_Models\models\checkpoints"
+
+# Путь к моделям ComfyUI
+COMFYUI_MODELS_PATH = os.getenv(
+    "COMFYUI_MODELS_PATH",
+    r"D:\Models\ComfyUI_Models\models"
 )
 
-# LTX 2.3 model names
-LTX_MODEL_NAME = "ltx-2.3-22b-dev-fp8.safetensors"  # или "ltx-2.3-22b-distilled-fp8.safetensors"
+# LTX модели (файлы уже есть в models/checkpoints)
+LTX_MODEL_NAME = "ltx-2.3-22b-dev-fp8.safetensors"
 LTX_VAE_NAME = "LTX23_video_vae_bf16.safetensors"
+
+# ============================================
+# TTS - ЛОКАЛЬНЫЙ Coqui/Piper (без облака!)
+# ============================================
+# Не используем облачные API - только локальный TTS
+USE_LOCAL_TTS = os.getenv("USE_LOCAL_TTS", "true").lower() == "true"
+
+# Путь к Piper (установлен локально)
+PIPER_PATH = os.getenv(
+    "PIPER_PATH",
+    r"C:\ai-project\piper\piper.exe"
+)
+
+# Модель Piper
+PIPER_MODEL = os.getenv(
+    "PIPER_MODEL",
+    r"C:\ai-project\piper\en_US-lessac-piper.onnx"
+)
 LTX_CLIP_L = "clip_l.safetensors"
 LTX_CLIP_G = "clip_g.safetensors"
-
-# Default модель для видео: "ltx" или "wan"
 DEFAULT_VIDEO_MODEL = os.getenv("DEFAULT_VIDEO_MODEL", "ltx")
+
+# Для обратной совместимости (устаревшие, но нужны для импорта)
+STABILITY_API_URL = ""
+STABILITY_API_KEY = ""
+LTX_API_KEY = ""
+LTX_API_URL = ""
+ELEVENLABS_API_KEY = ""
+OPENAI_TTS_API_KEY = ""
+USE_LOCAL_LTX = True  # Используем локальный генератор
+USE_LOCAL_SDXL = True
+USE_COMFYUI = True
+USE_LOCAL_TTS = True
 
 # Video Settings
 IMAGE_WIDTH = 1024
 IMAGE_HEIGHT = 1024
+
+# FFmpeg path (installed locally)
+FFMPEG_PATH = os.getenv(
+    "FFMPEG_PATH",
+    r"C:\ai-project\ffmpeg\bin\ffmpeg.exe"
+)
+
+# Scene Settings
 SCENE_DURATION = 4  # seconds per scene
 TRANSITION_DURATION = 0.5  # seconds
 

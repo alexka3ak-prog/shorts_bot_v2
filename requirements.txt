@@ -16,11 +16,34 @@ moviepy>=1.0.3
 ffmpeg-python>=0.2.0
 
 # ============================================
+# OPTIONAL: TTS / Audio (установите нужное)
+# ============================================
+
+# Для ElevenLabs TTS - не требует установки, нужен API ключ
+# export ELEVENLABS_API_KEY="ваш_ключ"
+
+# Для OpenAI TTS - не требует установки, нужен API ключ
+# export OPENAI_TTS_API_KEY="ваш_ключ"
+
+# Для локального TTS (Coqui):
+# pip install TTS>=0.22.0
+
+# Для Piper TTS:
+# Скачайте с https://github.com/rhasspy/piper
+
+# ============================================
+# OPTIONAL: Lip-Sync (установите нужное)
+# ============================================
+
+# Для Wav2Lip:
+# pip install wav2lip>=0.0.1  # или используйте ComfyUI
+
+# ============================================
 # LOCAL MODELS (установите нужное)
 # ============================================
 
 # LLM - Установите Ollama отдельно: https://ollama.com
-# Затем скачайте модель: ollama pull qwen2:8b
+# Затем скачайте модель: ollama pull qwen3:8b
 
 # Для локального Stable Diffusion XL:
 # pip install torch>=2.0.0 diffusers>=0.25.0 transformers>=4.36.0 accelerate>=0.25.0

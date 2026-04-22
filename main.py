@@ -27,11 +27,16 @@ sys.path.insert(0, str(Path(__file__).parent))
 from pipeline import (
     generate_script,
     validate_script,
+    extract_characters_from_script,
+    extract_all_dialogs,
     ImageGenerator,
     VideoGenerator,
     VideoConcatenator,
     ComfyUIVideoGenerator,
-    SimpleVideoGenerator
+    SimpleVideoGenerator,
+    TTSGenerator,
+    LipSyncGenerator,
+    CharacterVideoGenerator
 )
 from config import (
     OUTPUT_DIR,
@@ -53,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 class AutoVideoPipeline:
-    """Main video generation pipeline"""
+    """Main video generation pipeline with character and dialog support"""
     
     def __init__(self, output_dir: str = OUTPUT_DIR, temp_dir: str = TEMP_DIR, 
                  format_name: str = DEFAULT_FORMAT, video_model: str = DEFAULT_VIDEO_MODEL):
@@ -76,6 +81,11 @@ class AutoVideoPipeline:
         self.image_generator = ImageGenerator(str(self.temp_dir), format_name)
         self.video_generator = VideoGenerator(str(self.temp_dir))
         
+        # Character and dialog components
+        self.tts_generator = TTSGenerator(str(self.temp_dir))
+        self.lipsync_generator = LipSyncGenerator(str(self.temp_dir))
+        self.character_video_generator = CharacterVideoGenerator(str(self.temp_dir))
+        
         # ComfyUI video generator (для LTX/Wan)
         self.comfyui_generator = None
         self.simple_generator = None
@@ -95,6 +105,7 @@ class AutoVideoPipeline:
         self.concatenator = VideoConcatenator(str(self.output_dir), str(self.temp_dir))
         
         logger.info(f"Pipeline initialized. Output: {self.output_dir}")
+        logger.info("Character and dialog support: ENABLED")
     
     def run(self, idea: str, num_scenes: int = 4) -> str:
         """
@@ -145,8 +156,24 @@ class AutoVideoPipeline:
                 scene_id = i + 1
             logger.info(f"  Scene {scene_id}: {os.path.basename(img_path)}")
         
+        # Step 2.5: Generate TTS audio for dialogs (NEW!)
+        all_dialogs = extract_all_dialogs(script)
+        if all_dialogs:
+            logger.info("\n[2.5/6] Generating speech audio for dialogs...")
+            # Group dialogs by scene
+            audio_by_scene = {}
+            for scene in script:
+                scene_id = scene.get("scene_id", 0)
+                scene_dialogs = scene.get("dialogs", [])
+                if scene_dialogs:
+                    audio_paths_scene = self.tts_generator.generate_all_dialogs(scene_dialogs)
+                    audio_by_scene[scene_id] = audio_paths_scene
+                    logger.info(f"  Scene {scene_id}: {len(audio_paths_scene)} dialogs")
+        else:
+            audio_by_scene = {}
+        
         # Step 3: Generate videos from images
-        logger.info("\n[3/5] Generating videos...")
+        logger.info("\n[3/6] Generating videos...")
         
         if self.simple_generator:
             # Use simple FFmpeg-based generator
@@ -169,8 +196,31 @@ class AutoVideoPipeline:
                 scene_id = scene.get("scene_id", i+1) if isinstance(scene, dict) else i+1
                 logger.info(f"  Scene {scene_id}: {os.path.basename(vid_path)}")
         
-        # Step 4: Concatenate videos
-        logger.info("\n[4/5] Concatenating scene videos...")
+        # Step 4: Add character dialogs to videos (NEW!)
+        if audio_by_scene:
+            logger.info("\n[4/6] Adding dialog audio to videos...")
+            enhanced_videos = []
+            for i, (scene, vid_path) in enumerate(zip(script, video_paths)):
+                scene_id = scene.get("scene_id", i+1) if isinstance(scene, dict) else i+1
+                scene_dialogs = scene.get("dialogs", [])
+                
+                if scene_dialogs and scene_id in audio_by_scene:
+                    scene_audio = audio_by_scene[scene_id]
+                    # Generate video with audio (character video generator)
+                    enhanced_path = self.character_video_generator.generate_scene_video(
+                        scene, 
+                        vid_path,
+                        scene_audio,
+                        str(self.temp_dir / f"scene_{scene_id}_dialog.mp4")
+                    )
+                    enhanced_videos.append(enhanced_path)
+                    logger.info(f"  Scene {scene_id}: Added {len(scene_audio)} dialogs")
+                else:
+                    enhanced_videos.append(vid_path)
+            video_paths = enhanced_videos
+        
+        # Step 5: Concatenate videos
+        logger.info("\n[5/6] Concatenating scene videos...")
         
         # Safely extract transitions
         transitions = []
@@ -187,8 +237,8 @@ class AutoVideoPipeline:
         )
         logger.info(f"  ✓ Final video: {os.path.basename(final_video)}")
         
-        # Step 5: Generate metadata
-        logger.info("\n[5/5] Saving metadata...")
+        # Step 6: Generate metadata
+        logger.info("\n[6/6] Saving metadata...")
         metadata = self.concatenator.generate_metadata(script, final_video, image_paths)
         
         logger.info("\n" + "=" * 60)
