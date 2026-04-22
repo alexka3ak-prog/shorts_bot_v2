@@ -181,24 +181,21 @@ class AutoVideoPipeline:
         
         video_paths = []
         
-        # Приоритет: LTX Video Generator
+        # Приоритет: LTX Video Generator (T2V)
         if self.ltx_generator and self.ltx_generator.available:
-            logger.info("Using LTX Video Generator...")
+            logger.info("Using LTX T2V (Text-to-Video)...")
             for i, scene in enumerate(script):
                 scene_id = scene.get("scene_id", i+1) if isinstance(scene, dict) else i+1
                 prompt = scene.get("description", "") if isinstance(scene, dict) else str(scene)
-                img_path = image_paths[i]
                 
-                if img_path and Path(img_path).exists():
-                    video_path = self.ltx_generator.generate_i2v(
-                        img_path, prompt, 81,
-                        output_name=f"scene_{scene_id}.mp4"
-                    )
-                else:
-                    video_path = self.ltx_generator.generate_t2v(
-                        prompt, 81,
-                        output_name=f"scene_{scene_id}.mp4"
-                    )
+                # T2V - генерируем видео прямо из текста
+                video_path = self.ltx_generator.generate_t2v(
+                    prompt, 
+                    num_frames=81,
+                    width=768,
+                    height=512,
+                    output_name=f"scene_{scene_id}.mp4"
+                )
                 
                 if not video_path:
                     video_path = str(self.temp_dir / f"scene_{scene_id}.mp4")
