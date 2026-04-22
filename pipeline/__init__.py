@@ -12,10 +12,12 @@ from .image_generator import ImageGenerator, generate_image
 from .video_generator import VideoGenerator, generate_video
 from .video_concatenator import VideoConcatenator, concatenate_videos
 from .comfyui_video import ComfyUIVideoGenerator, generate_video_via_comfyui
+from .ltx_video import LTXVideoGenerator, generate_video
 from .simple_video import SimpleVideoGenerator, generate_simple_video
 from .tts_generator import TTSGenerator, generate_speech
 from .lipsync_generator import LipSyncGenerator, generate_lipsync
 from .character_video import CharacterVideoGenerator, generate_character_video
+from .ltx_video import LTXVideoGenerator, generate_video
 
 __all__ = [
     # Script generation
@@ -33,6 +35,7 @@ __all__ = [
     "generate_video_via_comfyui",
     "SimpleVideoGenerator",
     "generate_simple_video",
+    "LTXVideoGenerator",  # NEW - LTX 2.3
     "CharacterVideoGenerator", 
     "generate_character_video",
     # Video composition
