@@ -2,6 +2,7 @@
 LTX Video Generator via ComfyUI API
 
 Подключается к работающему ComfyUI и использует LTX 2.3.
+Workflow: LoadImage -> LTXVideoI2V -> SaveVideo
 """
 import os
 import json
@@ -9,25 +10,22 @@ import logging
 import uuid
 import time
 import requests
+import shutil
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Optional
 
 try:
     from config import (
         COMFYUI_HOST,
         COMFYUI_PORT,
-        COMFYUI_CHECKPOINT_PATH,
         TEMP_DIR,
         OUTPUT_DIR,
-        SCENE_DURATION
     )
 except ImportError:
     COMFYUI_HOST = "127.0.0.1"
     COMFYUI_PORT = 8188
-    COMFYUI_CHECKPOINT_PATH = r"D:\Models\ComfyUI_Models\models\checkpoints"
     TEMP_DIR = "/workspace/project/shorts_bot_v2/output/temp"
     OUTPUT_DIR = "/workspace/project/shorts_bot_v2/output"
-    SCENE_DURATION = 4
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +37,6 @@ class LTXVideoGenerator:
         self.host = host or COMFYUI_HOST
         self.port = port or COMFYUI_PORT
         self.base_url = f"http://{self.host}:{self.port}"
-        self.checkpoint_path = COMFYUI_CHECKPOINT_PATH
         self.output_dir = Path(TEMP_DIR)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -53,7 +50,7 @@ class LTXVideoGenerator:
         except:
             return False
     
-    def _queue_prompt(self, prompt: Dict) -> Optional[str]:
+    def _queue_prompt(self, prompt: dict) -> Optional[str]:
         """Отправить промпт в ComfyUI"""
         try:
             prompt_id = str(uuid.uuid4())
@@ -68,128 +65,143 @@ class LTXVideoGenerator:
             logger.error(f"Failed to queue: {e}")
         return None
     
-    def _wait_for_result(self, prompt_id: str, timeout: int = 300) -> Optional[str]:
+    def _wait_for_result(self, prompt_id: str, timeout: int = 600) -> Optional[str]:
         """Ждать результата"""
         start = time.time()
+        
         while time.time() - start < timeout:
             try:
                 resp = requests.get(f"{self.base_url}/api/prompt_history/{prompt_id}", timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
-                    if data.get("status", {}).get("completed"):
+                    status = data.get("status", {})
+                    
+                    if status.get("completed"):
                         outputs = data.get("outputs", {})
-                        for out in outputs.values():
+                        for node_id, out in outputs.items():
                             if "video" in out:
-                                return out["video"].get("filename")
-            except:
-                pass
+                                fname = out["video"].get("filename")
+                                logger.info(f"Video generated: {fname}")
+                                return fname
+                    
+                    if status.get("error"):
+                        logger.error(f"Error: {status['error']}")
+                        return None
+                        
+            except Exception as e:
+                logger.debug(f"Waiting... {e}")
+            
             time.sleep(3)
+        
+        logger.warning("Timeout")
         return None
     
-    def generate_t2v(self, prompt: str, num_frames: int = 81,
-                    output_name: str = None) -> Optional[str]:
-        """Text-to-Video генерация через LTX"""
-        if not self.available:
-            logger.error("ComfyUI не доступен")
+    def _upload_image(self, image_path: str) -> Optional[str]:
+        """Загрузить изображение"""
+        if not Path(image_path).exists():
             return None
         
-        # Базовый промпт для LTX - нужно подстроить под конкретные ноды
-        prompt_data = {
-            "1": {
-                "inputs": {
-                    "prompt": prompt,
-                    "negative_prompt": "",
-                    "steps": 20,
-                    "CFG": 1.5,
-                    "sampler": "euler",
-                    "num_frames": num_frames
-                },
-                "class_type": "LTXVideoTextGenerate"
-            },
-            "2": {
-                "inputs": {"video": ["1", 0]},
-                "class_type": "SaveVideo"
-            }
-        }
-        
-        prompt_id = self._queue_prompt(prompt_data)
-        if not prompt_id:
-            return None
-        
-        output_file = self._wait_for_result(prompt_id, timeout=600)
-        
-        if output_file:
-            out_path = self.output_dir / (output_name or f"ltx_{int(time.time())}.mp4")
-            # Copy from ComfyUI output folder
-            return str(out_path)
-        
+        try:
+            with open(image_path, "rb") as f:
+                files = {"image": (Path(image_path).name, f, "image/png")}
+                resp = requests.post(f"{self.base_url}/api/upload/image", files=files, timeout=30)
+            if resp.status_code == 200:
+                return resp.json().get("name")
+        except Exception as e:
+            logger.error(f"Upload error: {e}")
         return None
     
     def generate_i2v(self, image_path: str, prompt: str,
                      num_frames: int = 81,
+                     width: int = 512,
+                     height: int = 768,
+                     fps: int = 24,
                      output_name: str = None) -> Optional[str]:
-        """Image-to-Video генерация"""
-        if not self.available or not Path(image_path).exists():
+        """Image-to-Video через LTX 2.3
+        
+        Workflow из video_ltx2_3_i2v.json:
+        - Node 269: LoadImage
+        - Node 320: LTXVideoI2V (UUID type)
+        - Node 75: SaveVideo
+        """
+        if not self.available:
+            logger.error("ComfyUI недоступен")
             return None
         
-        # Upload image first
-        try:
-            with open(image_path, "rb") as f:
-                resp = requests.post(
-                    f"{self.base_url}/api/upload/image",
-                    files={"image": f},
-                    timeout=30
-                )
-            if resp.status_code != 200:
-                return None
-            image_name = resp.json().get("name")
-        except:
+        # Upload image
+        image_name = self._upload_image(image_path)
+        if not image_name:
+            logger.error("Не удалось загрузить изображение")
             return None
         
-        # Build prompt
+        logger.info(f"Загружено: {image_name}")
+        
+        # Build workflow - точно по video_ltx2_3_i2v.json
         prompt_data = {
-            "3": {
-                "inputs": {"image": image_name},
+            # Node 269: LoadImage
+            "269": {
+                "inputs": {
+                    "image_path": image_name,
+                    "choose_image_to_upload": "uploaded_image"
+                },
                 "class_type": "LoadImage"
             },
-            "4": {
+            # Node 320: LTX Video I2V (UUID node)
+            "320": {
                 "inputs": {
-                    "image": ["3", 0],
-                    "prompt": prompt,
-                    "num_frames": num_frames
+                    "input": ["269", 0],  # IMAGE from LoadImage
+                    "value_2": width,
+                    "value_3": height,
+                    "value_4": num_frames,
+                    "lora_name": "ltx-2.3-22b-distilled-lora-384.safetensors",
+                    "model_name": "",
+                    "value_5": fps
                 },
-                "class_type": "LTXVideoGenerate"
+                "class_type": "2454ad83-157c-40dd-9f19-5daaf4041ce0"
             },
-            "5": {
-                "inputs": {"video": ["4", 0]},
-                "class_type": "SaveVideo"
+            # Node 75: SaveVideo
+            "75": {
+                "inputs": {
+                    "video": ["320", 0]
+                },
+                "class_type": "SaveVideo",
+                "widgets_values": ["video/LTX_2.3_i2v", "auto", "auto"]
             }
         }
         
+        # Queue
         prompt_id = self._queue_prompt(prompt_data)
         if not prompt_id:
+            logger.error("Не удалось поставить в очередь")
             return None
         
+        logger.info(f"В очереди: {prompt_id}")
+        
+        # Wait
         output_file = self._wait_for_result(prompt_id, timeout=600)
         
         if output_file:
-            out_path = self.output_dir / (output_name or f"ltx_i2v_{int(time.time())}.mp4")
-            return str(out_path)
+            # ComfyUI сохраняет в C:\ai-project\ComfyUI\output\
+            source = Path("C:/ai-project/ComfyUI/output") / output_file
+            
+            if source.exists():
+                out_path = self.output_dir / (output_name or f"ltx_{int(time.time())}.mp4")
+                shutil.copy(source, out_path)
+                logger.info(f"Сохранено: {out_path}")
+                return str(out_path)
+            else:
+                logger.warning(f"Файл не найден: {source}")
+                return str(source)
         
         return None
 
 
-def generate_video(prompt: str, output_dir: str = TEMP_DIR) -> Optional[str]:
+def generate_video(prompt: str = None, output_dir: str = TEMP_DIR) -> Optional[str]:
     """Генерировать видео"""
     gen = LTXVideoGenerator()
-    return gen.generate_t2v(prompt)
+    return gen.generate_t2v(prompt) if prompt else None
 
 
 if __name__ == "__main__":
     gen = LTXVideoGenerator()
     print(f"ComfyUI: {gen.available}")
-    
-    if gen.available:
-        print("Generating test video...")
-        result = gen.generate_t2v("A wizard casting spell", 41)
-        print(f"Result: {result}")
