@@ -70,6 +70,12 @@ USE_LOCAL_SDXL = True
 USE_COMFYUI = True
 USE_LOCAL_TTS = True
 
+# пути к локальным компонентам
+COMFYUI_CHECKPOINT_PATH = os.getenv(
+    "COMFYUI_CHECKPOINT_PATH",
+    r"D:\Models\ComfyUI_Models\models\checkpoints"
+)
+
 # Video Settings
 IMAGE_WIDTH = 1024
 IMAGE_HEIGHT = 1024
