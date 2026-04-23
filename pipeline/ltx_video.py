@@ -164,14 +164,11 @@ class LTXVideoGenerator:
                      output_name: str = None) -> Optional[str]:
         """Text-to-Video через LTX 2.3
         
-        Полная структура из T2V workflow:
-        - CheckpointLoaderSimple
-        - LTXVGemmaCLIPModelLoader  
-        - CLIPTextEncode (positive + negative)
-        - EmptyLTXVLatentVideo
-        - MultimodalGuider + GuiderParameters
-        - SamplerCustomAdvanced
-        - VAEDecode + VHS_VideoCombine
+        Использует ноды из официального workflow:
+        - LTXAVTextEncoderLoader (вместо LTXVGemmaCLIPModelLoader)
+        - GemmaAPITextEncode (вместо CLIPTextEncode)
+        - MultimodalGuider
+        - ClownSampler_Beta (вместо обычного sampler)
         """
         if not self.available:
             logger.error("ComfyUI недоступен")
@@ -179,41 +176,40 @@ class LTXVideoGenerator:
         
         logger.info(f"Generating T2V: {prompt[:50]}...")
         
-        # Упрощённый T2V workflow (основные ноды)
+        # Упрощённый T2V workflow (по мотивам LTX-2.3_T2V_I2V_Single_Stage_Distilled_Full.json)
         prompt_data = {
             # Node 1: Checkpoint
             "1": {
                 "inputs": {"ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"},
                 "class_type": "CheckpointLoaderSimple"
             },
-            # Node 2: Gemma CLIP Model Loader
+            # Node 2: LTX AV Text Encoder Loader
             "2": {
                 "inputs": {
-                    "gemma_path": "gemma_3_12B_it_fp4_mixed.safetensors",
-                    "ltxv_path": "ltx-2.3-22b-dev-fp8.safetensors",
-                    "max_length": 1024
+                    "text_encoder_path": "gemma_3_12B_it_fp4_mixed.safetensors",
+                    "model_path": "ltx-2.3-22b-dev-fp8.safetensors",
                 },
-                "class_type": "LTXVGemmaCLIPModelLoader"
+                "class_type": "LTXAVTextEncoderLoader"
             },
-            # Node 3: Positive prompt
+            # Node 3: Positive Prompt (Gemma API)
             "3": {
                 "inputs": {
                     "text": prompt,
                     "clip": ["2", 0]
                 },
-                "class_type": "CLIPTextEncode"
+                "class_type": "GemmaAPITextEncode"
             },
-            # Node 4: Negative prompt
+            # Node 4: Negative Prompt
             "4": {
                 "inputs": {
                     "text": negative_prompt,
                     "clip": ["2", 0]
                 },
-                "class_type": "CLIPTextEncode"
+                "class_type": "GemmaAPITextEncode"
             },
-            # Node 8: Sampler
+            # Node 8: Sampler (ClownSampler - лучше для video)
             "8": {
-                "inputs": {"sampler_name": "euler"},
+                "inputs": {"sampler_name": "clown_beta"},
                 "class_type": "KSamplerSelect"
             },
             # Node 9: Scheduler
@@ -232,13 +228,13 @@ class LTXVideoGenerator:
                 "inputs": {"noise_seed": int(time.time()) % 1000000},
                 "class_type": "RandomNoise"
             },
-            # Node 12: VAE Decode
+            # Node 12: VAE Decode (tiled для экономии памяти)
             "12": {
                 "inputs": {
                     "samples": ["41", 0],
                     "vae": ["1", 2]
                 },
-                "class_type": "VAEDecode"
+                "class_type": "LTXVTiledVAEDecode"
             },
             # Node 15: Video Combine (Save)
             "15": {
@@ -253,19 +249,18 @@ class LTXVideoGenerator:
                     "save_output": True,
                     "images": ["12", 0]
                 },
-                "class_type": "VHS_VideoCombine"
+                "class_type": "CreateVideo"
             },
             # Node 17: Multimodal Guider
             "17": {
                 "inputs": {
-                    "skip_blocks": 29,
                     "model": ["44", 0],
                     "positive": ["22", 0],
                     "negative": ["22", 1]
                 },
                 "class_type": "MultimodalGuider"
             },
-            # Node 18: Guider Parameters (Video)
+            # Node 18: Guider Parameters
             "18": {
                 "inputs": {
                     "modality": "VIDEO",
@@ -285,15 +280,15 @@ class LTXVideoGenerator:
                 },
                 "class_type": "LTXVConditioning"
             },
-            # Node 23: FPS constant
+            # Node 23: FPS
             "23": {
                 "inputs": {"value": fps},
-                "class_type": "FloatConstant"
+                "class_type": "PrimitiveFloat"
             },
-            # Node 27: Frames constant
+            # Node 27: Frames
             "27": {
                 "inputs": {"value": num_frames},
-                "class_type": "INTConstant"
+                "class_type": "PrimitiveInt"
             },
             # Node 41: Sampler
             "41": {
@@ -316,14 +311,12 @@ class LTXVideoGenerator:
                 },
                 "class_type": "EmptyLTXVLatentVideo"
             },
-            # Node 44: Model Patcher
+            # Node 44: Model (direct from checkpoint)
             "44": {
                 "inputs": {
-                    "torch_compile": False,
-                    "disable_backup": False,
                     "model": ["1", 0]
                 },
-                "class_type": "LTXVSequenceParallelMultiGPUPatcher"
+                "class_type": "Model"
             }
         }
         
