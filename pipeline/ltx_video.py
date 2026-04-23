@@ -5,7 +5,11 @@ LTX Video Generator via ComfyUI API
 - T2V (Text-to-Video) с текстовым промптом
 - I2V (Image-to-Video) из изображения
 
-Workflow из video_ltx2_3_t2v.json (полная структура)
+Важное примечание о нодах:
+- EmptyLTXVLatentVideo, LTXVScheduler, LTXVSeparateAVLatent, LTXVConcatAVLatent - это
+  ВСТРОЕННЫЕ ноды ComfyUI (comfy_extras/nodes_lt.py), а НЕ ComfyUI-LTXVideo
+- Используем workflow из example_workflows/2.3/LTX-2.3_T2V_I2V_Single_Stage_Distilled_Full.json
+- Упрощённая версия для T2V генерации
 """
 import os
 import json
@@ -15,7 +19,7 @@ import time
 import requests
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 try:
     from config import (
@@ -23,12 +27,14 @@ try:
         COMFYUI_PORT,
         TEMP_DIR,
         OUTPUT_DIR,
+        COMFYUI_CHECKPOINT_PATH,
     )
 except ImportError:
     COMFYUI_HOST = "127.0.0.1"
     COMFYUI_PORT = 8188
     TEMP_DIR = "/workspace/project/shorts_bot_v2/output/temp"
     OUTPUT_DIR = "/workspace/project/shorts_bot_v2/output"
+    COMFYUI_CHECKPOINT_PATH = "D:/Models/ComfyUI_Models/models/checkpoints"
 
 logger = logging.getLogger(__name__)
 
@@ -44,14 +50,28 @@ class LTXVideoGenerator:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         self.available = self._check_connection()
+        self.comfyui_output_dir = None  # Will be determined dynamically
         logger.info(f"LTXVideoGenerator: ComfyUI={'доступен' if self.available else 'недоступен'}")
     
     def _check_connection(self) -> bool:
+        """Проверить подключение к ComfyUI и получить output directory"""
         try:
             resp = requests.get(f"{self.base_url}/api/object_info", timeout=5)
-            return resp.status_code == 200
+            if resp.status_code == 200:
+                # Try to get output directory from system stats
+                try:
+                    stats = requests.get(f"{self.base_url}/api/system_stats", timeout=5)
+                    if stats.status_code == 200:
+                        data = stats.json()
+                        self.comfyui_output_dir = data.get("output_directory")
+                        if self.comfyui_output_dir:
+                            logger.info(f"ComfyUI output dir: {self.comfyui_output_dir}")
+                except:
+                    pass
+                return True
         except:
-            return False
+            pass
+        return False
     
     def _queue_prompt(self, prompt: dict) -> Optional[str]:
         """Отправить промпт в ComfyUI"""
@@ -68,8 +88,8 @@ class LTXVideoGenerator:
             logger.error(f"Failed to queue: {e}")
         return None
     
-    def _wait_for_result(self, prompt_id: str, timeout: int = 600) -> Optional[str]:
-        """Ждать результата"""
+    def _wait_for_result(self, prompt_id: str, timeout: int = 600) -> Optional[Dict[str, Any]]:
+        """Ждать результата и вернуть полные outputs"""
         start = time.time()
         
         while time.time() - start < timeout:
@@ -81,21 +101,8 @@ class LTXVideoGenerator:
                     
                     if status.get("completed"):
                         outputs = data.get("outputs", {})
-                        # VHS_VideoCombine saves video
-                        for node_id, out in outputs.items():
-                            if "video" in out or "images" in out:
-                                # Try video first
-                                if "video" in out:
-                                    fname = out["video"].get("filename")
-                                    if fname:
-                                        logger.info(f"Video generated: {fname}")
-                                        return fname
-                                # Then images
-                                if "images" in out:
-                                    for img in out.get("images", []):
-                                        if img.get("filename"):
-                                            logger.info(f"Images generated: {img['filename']}")
-                                            return img["filename"]
+                        # Return the full outputs for processing
+                        return outputs
                     
                     if status.get("error"):
                         logger.error(f"Error: {status['error']}")
@@ -106,7 +113,29 @@ class LTXVideoGenerator:
             
             time.sleep(3)
         
-        logger.warning("Timeout")
+        logger.warning("Timeout waiting for result")
+        return None
+    
+    def _get_output_filename(self, outputs: Dict[str, Any]) -> Optional[str]:
+        """Извлечь имя файла из outputs"""
+        for node_id, out in outputs.items():
+            # VHS_VideoCombine
+            if "video" in out:
+                fname = out["video"].get("filename")
+                if fname:
+                    logger.info(f"Video generated: {fname}")
+                    return fname
+            # SaveVideo node
+            if "videos" in out:
+                for v in out.get("videos", []):
+                    if v.get("filename"):
+                        return v["filename"]
+            # Images (for VAEDecode)
+            if "images" in out:
+                for img in out.get("images", []):
+                    if img.get("filename"):
+                        logger.info(f"Images generated: {img['filename']}")
+                        return img["filename"]
         return None
     
     def _upload_image(self, image_path: str) -> Optional[str]:
@@ -306,20 +335,50 @@ class LTXVideoGenerator:
         
         logger.info(f"В очереди: {prompt_id}")
         
-        # Wait
-        output_file = self._wait_for_result(prompt_id, timeout=600)
+        # Wait for completion
+        outputs = self._wait_for_result(prompt_id, timeout=600)
         
-        if output_file:
-            source = Path("C:/ai-project/ComfyUI/output") / output_file
+        if outputs:
+            # Get filename from outputs
+            output_file = self._get_output_filename(outputs)
             
-            if source.exists():
-                out_path = self.output_dir / (output_name or f"ltx_{int(time.time())}.mp4")
-                shutil.copy(source, out_path)
-                logger.info(f"Сохранено: {out_path}")
-                return str(out_path)
-            else:
-                logger.warning(f"Файл не найден: {source}")
-                return str(source)
+            if output_file:
+                # Determine source path (try dynamic first, then common defaults)
+                source = None
+                
+                if self.comfyui_output_dir:
+                    potential_paths = [
+                        Path(self.comfyui_output_dir) / output_file,
+                        Path(self.comfyui_output_dir.replace("\\", "/")) / output_file,
+                    ]
+                    for p in potential_paths:
+                        if p.exists():
+                            source = p
+                            break
+                
+                # Common ComfyUI output paths on Windows
+                if not source:
+                    common_paths = [
+                        Path("C:/ai-project/ComfyUI/output") / output_file,
+                        Path("C:/ComfyUI/output") / output_file,
+                        Path("D:/Models/ComfyUI/output") / output_file,
+                        Path("output") / output_file,
+                        Path("ComfyUI/output") / output_file,
+                    ]
+                    for p in common_paths:
+                        if p.exists():
+                            source = p
+                            break
+                
+                if source and source.exists():
+                    out_path = self.output_dir / (output_name or output_file)
+                    shutil.copy(source, out_path)
+                    logger.info(f"Saved: {out_path}")
+                    return str(out_path)
+                else:
+                    logger.warning(f"Output file not found: {output_file}")
+                    logger.warning(f"Searched paths: {self.comfyui_output_dir}, C:/ai-project/ComfyUI/output")
+                    return str(output_file) if output_file else None
         
         return None
     
@@ -379,17 +438,32 @@ class LTXVideoGenerator:
         if not prompt_id:
             return None
         
-        logger.info(f"В очереди I2V: {prompt_id}")
+        logger.info(f"Queued I2V: {prompt_id}")
         
-        output_file = self._wait_for_result(prompt_id, timeout=600)
+        # Wait for completion
+        outputs = self._wait_for_result(prompt_id, timeout=600)
         
-        if output_file:
-            source = Path("C:/ai-project/ComfyUI/output") / output_file
+        if outputs:
+            output_file = self._get_output_filename(outputs)
             
-            if source.exists():
-                out_path = self.output_dir / (output_name or f"ltx_i2v_{int(time.time())}.mp4")
-                shutil.copy(source, out_path)
-                return str(out_path)
+            if output_file:
+                source = None
+                if self.comfyui_output_dir:
+                    source = Path(self.comfyui_output_dir) / output_file
+                
+                if not source or not source.exists():
+                    for p in [
+                        Path("C:/ai-project/ComfyUI/output") / output_file,
+                        Path("output") / output_file,
+                    ]:
+                        if p.exists():
+                            source = p
+                            break
+                
+                if source and source.exists():
+                    out_path = self.output_dir / (output_name or f"ltx_i2v_{int(time.time())}.mp4")
+                    shutil.copy(source, out_path)
+                    return str(out_path)
         
         return None
 
