@@ -164,11 +164,11 @@ class LTXVideoGenerator:
                      output_name: str = None) -> Optional[str]:
         """Text-to-Video через LTX 2.3
         
-        Использует ноды из официального workflow:
-        - LTXAVTextEncoderLoader (вместо LTXVGemmaCLIPModelLoader)
-        - GemmaAPITextEncode (вместо CLIPTextEncode)
+        Использует локальный encoder БЕЗ API:
+        - LTXAVTextEncoderLoader (загружает Gemma локально)
+        - CLIPTextEncode (кодирует промпт без API key!)
         - MultimodalGuider
-        - ClownSampler_Beta (вместо обычного sampler)
+        - KSampler + LTXVScheduler
         """
         if not self.available:
             logger.error("ComfyUI недоступен")
@@ -176,28 +176,29 @@ class LTXVideoGenerator:
         
         logger.info(f"Generating T2V: {prompt[:50]}...")
         
-        # Упрощённый T2V workflow (по мотивам LTX-2.3_T2V_I2V_Single_Stage_Distilled_Full.json)
+        # Упрощённый T2V workflow - локальный encoder БЕЗ API
         prompt_data = {
             # Node 1: Checkpoint
             "1": {
                 "inputs": {"ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"},
                 "class_type": "CheckpointLoaderSimple"
             },
-            # Node 2: LTX AV Text Encoder Loader
+            # Node 2: LTX AV Text Encoder Loader (локальный)
             "2": {
                 "inputs": {
-                    "text_encoder_path": "gemma_3_12B_it_fp4_mixed.safetensors",
-                    "model_path": "ltx-2.3-22b-dev-fp8.safetensors",
+                    "text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
+                    "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
+                    "device": "default"
                 },
                 "class_type": "LTXAVTextEncoderLoader"
             },
-            # Node 3: Positive Prompt (Gemma API)
+            # Node 3: Positive Prompt - CLIPTextEncode (локальный, БЕЗ API!)
             "3": {
                 "inputs": {
                     "text": prompt,
                     "clip": ["2", 0]
                 },
-                "class_type": "GemmaAPITextEncode"
+                "class_type": "CLIPTextEncode"
             },
             # Node 4: Negative Prompt
             "4": {
@@ -205,11 +206,11 @@ class LTXVideoGenerator:
                     "text": negative_prompt,
                     "clip": ["2", 0]
                 },
-                "class_type": "GemmaAPITextEncode"
+                "class_type": "CLIPTextEncode"
             },
-            # Node 8: Sampler (ClownSampler - лучше для video)
+            # Node 8: Sampler
             "8": {
-                "inputs": {"sampler_name": "clown_beta"},
+                "inputs": {"sampler_name": "euler"},
                 "class_type": "KSamplerSelect"
             },
             # Node 9: Scheduler
