@@ -84,6 +84,15 @@ class LTXVideoGenerator:
             )
             if resp.status_code == 200:
                 return resp.json().get("prompt_id")
+            else:
+                # Логируем ошибку для отладки
+                logger.error(f"Queue failed: HTTP {resp.status_code}")
+                logger.error(f"Response: {resp.text[:500] if resp.text else 'empty'}")
+                try:
+                    err = resp.json()
+                    logger.error(f"Error details: {err}")
+                except:
+                    pass
         except Exception as e:
             logger.error(f"Failed to queue: {e}")
         return None
