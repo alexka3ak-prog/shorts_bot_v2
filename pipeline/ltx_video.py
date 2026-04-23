@@ -176,7 +176,7 @@ class LTXVideoGenerator:
         
         logger.info(f"Generating T2V: {prompt[:50]}...")
         
-        # Упрощённый T2V workflow - локальный encoder БЕЗ API
+        # Упрощённый T2V workflow - точно как в v4.1
         prompt_data = {
             # Node 1: Checkpoint
             "1": {
@@ -192,29 +192,52 @@ class LTXVideoGenerator:
                 },
                 "class_type": "LTXAVTextEncoderLoader"
             },
-            # Node 3: Positive Prompt - CLIPTextEncode (локальный, БЕЗ API!)
+            # Node 3: Apply LoRA (optional, for better quality)
             "3": {
+                "inputs": {
+                    "model": ["1", 0],
+                    "lora_name": "ltx-2.3-22b-distilled-lora-384.safetensors",
+                    "strength_model": 1.0
+                },
+                "class_type": "LoraLoaderModelOnly"
+            },
+            # Node 5: Positive Prompt - CLIPTextEncode (локальный)
+            "5": {
                 "inputs": {
                     "text": prompt,
                     "clip": ["2", 0]
                 },
                 "class_type": "CLIPTextEncode"
             },
-            # Node 4: Negative Prompt
-            "4": {
+            # Node 6: Negative Prompt
+            "6": {
                 "inputs": {
                     "text": negative_prompt,
                     "clip": ["2", 0]
                 },
                 "class_type": "CLIPTextEncode"
             },
-            # Node 8: Sampler
+            # Node 8: Empty Latent Video
             "8": {
-                "inputs": {"sampler_name": "euler"},
-                "class_type": "KSamplerSelect"
+                "inputs": {
+                    "width": width,
+                    "height": height,
+                    "length": num_frames,
+                    "batch_size": 1
+                },
+                "class_type": "EmptyLTXVLatentVideo"
             },
-            # Node 9: Scheduler
-            "9": {
+            # Node 13: LTX Conditioning
+            "13": {
+                "inputs": {
+                    "positive": ["5", 0],
+                    "negative": ["6", 0],
+                    "frame_rate": fps
+                },
+                "class_type": "LTXVConditioning"
+            },
+            # Node 14: Scheduler
+            "14": {
                 "inputs": {
                     "steps": steps,
                     "max_shift": 2.05,
@@ -224,100 +247,65 @@ class LTXVideoGenerator:
                 },
                 "class_type": "LTXVScheduler"
             },
-            # Node 11: Random noise
-            "11": {
+            # Node 15: Sampler
+            "15": {
+                "inputs": {"sampler_name": "euler"},
+                "class_type": "KSamplerSelect"
+            },
+            # Node 16: Random noise
+            "16": {
                 "inputs": {"noise_seed": int(time.time()) % 1000000},
                 "class_type": "RandomNoise"
             },
-            # Node 12: VAE Decode (tiled для экономии памяти)
-            "12": {
+            # Node 17: CFG Guider (как в v4.1!)
+            "17": {
                 "inputs": {
-                    "samples": ["41", 0],
+                    "model": ["3", 0],
+                    "positive": ["13", 0],
+                    "negative": ["13", 1],
+                    "cfg": cfg
+                },
+                "class_type": "CFGGuider"
+            },
+            # Node 18: Sampler
+            "18": {
+                "inputs": {
+                    "noise": ["16", 0],
+                    "guider": ["17", 0],
+                    "sampler": ["15", 0],
+                    "sigmas": ["14", 0],
+                    "latent_image": ["8", 0]
+                },
+                "class_type": "SamplerCustomAdvanced"
+            },
+            # Node 19: Separate AV
+            "19": {
+                "inputs": {
+                    "av_latent": ["18", 0]
+                },
+                "class_type": "LTXVSeparateAVLatent"
+            },
+            # Node 20: VAE Decode
+            "20": {
+                "inputs": {
+                    "samples": ["19", 0],
                     "vae": ["1", 2]
                 },
                 "class_type": "LTXVTiledVAEDecode"
             },
-            # Node 15: Video Combine (Save)
-            "15": {
+            # Node 21: Create Video
+            "21": {
                 "inputs": {
-                    "frame_rate": fps,
-                    "loop_count": 0,
-                    "filename_prefix": "ltx_video",
-                    "format": "video/h264-mp4",
-                    "pix_fmt": "yuv420p",
-                    "crf": 19,
-                    "save_metadata": True,
-                    "save_output": True,
-                    "images": ["12", 0]
+                    "frame_rate": fps
                 },
                 "class_type": "CreateVideo"
             },
-            # Node 17: Multimodal Guider
-            "17": {
-                "inputs": {
-                    "model": ["44", 0],
-                    "positive": ["22", 0],
-                    "negative": ["22", 1]
-                },
-                "class_type": "MultimodalGuider"
-            },
-            # Node 18: Guider Parameters
-            "18": {
-                "inputs": {
-                    "modality": "VIDEO",
-                    "cfg": cfg,
-                    "stg": 0,
-                    "rescale": 0,
-                    "modality_scale": 3
-                },
-                "class_type": "GuiderParameters"
-            },
-            # Node 22: Conditioning
+            # Node 22: Save Video
             "22": {
                 "inputs": {
-                    "frame_rate": fps,
-                    "positive": ["3", 0],
-                    "negative": ["4", 0]
+                    "video": ["21", 0]
                 },
-                "class_type": "LTXVConditioning"
-            },
-            # Node 23: FPS
-            "23": {
-                "inputs": {"value": fps},
-                "class_type": "PrimitiveFloat"
-            },
-            # Node 27: Frames
-            "27": {
-                "inputs": {"value": num_frames},
-                "class_type": "PrimitiveInt"
-            },
-            # Node 41: Sampler
-            "41": {
-                "inputs": {
-                    "noise": ["11", 0],
-                    "guider": ["17", 0],
-                    "sampler": ["8", 0],
-                    "sigmas": ["9", 0],
-                    "latent_image": ["43", 0]
-                },
-                "class_type": "SamplerCustomAdvanced"
-            },
-            # Node 43: Empty Latent Video
-            "43": {
-                "inputs": {
-                    "width": width,
-                    "height": height,
-                    "length": num_frames,
-                    "batch_size": 1
-                },
-                "class_type": "EmptyLTXVLatentVideo"
-            },
-            # Node 44: Model (direct from checkpoint)
-            "44": {
-                "inputs": {
-                    "model": ["1", 0]
-                },
-                "class_type": "Model"
+                "class_type": "SaveVideo"
             }
         }
         
